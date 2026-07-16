@@ -1,0 +1,645 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Go WebSSH</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/vendor/xterm.css" />
+    <link rel="stylesheet" href="/style.css?v=0.5.4" />
+  </head>
+  <body>
+    <div id="app">
+      <section id="view-login" class="view hidden login-view">
+        <div class="page-quick-controls">
+          <select
+            id="language-login"
+            class="compact-select"
+            aria-label="Language"
+          >
+            <option value="en">English</option>
+            <option value="zh-CN">简体中文</option>
+          </select>
+          <button
+            type="button"
+            id="mode-login"
+            class="icon-btn"
+            aria-label="Toggle color mode"
+          >
+            ☀
+          </button>
+        </div>
+        <div class="card login-card">
+          <h1>Go WebSSH</h1>
+          <p class="muted" data-i18n="signInContinue">Sign in to continue</p>
+          <form id="login-form">
+            <label
+              ><span data-i18n="username">Username</span
+              ><input
+                type="text"
+                id="login-username"
+                autocomplete="username"
+                required
+            /></label>
+            <label
+              ><span data-i18n="password">Password</span
+              ><input
+                type="password"
+                id="login-password"
+                autocomplete="current-password"
+                required
+            /></label>
+            <label class="checkbox-row remember-row"
+              ><input type="checkbox" id="login-remember" /><span
+                data-i18n="rememberLogin"
+                >Keep me signed in for 30 days</span
+              ></label
+            >
+            <button
+              type="submit"
+              id="login-btn"
+              class="btn primary"
+              data-i18n="login"
+            >
+              Login
+            </button>
+            <div id="login-error" class="error" role="alert"></div>
+          </form>
+        </div>
+      </section>
+
+      <header id="workspace-header" class="topbar workspace-header hidden">
+        <div class="brand">Go WebSSH</div>
+        <nav class="workspace-tabs" role="tablist">
+          <button
+            type="button"
+            id="home-tab"
+            class="workspace-tab active"
+            data-i18n="home"
+          >
+            Home
+          </button>
+          <div id="terminal-tabs" class="terminal-tabs"></div>
+          <button
+            type="button"
+            id="new-connection-btn"
+            class="btn ghost compact-btn"
+            title="New connection"
+          >
+            ＋
+          </button>
+        </nav>
+        <div class="topbar-actions workspace-actions">
+          <select
+            id="language-workspace"
+            class="compact-select"
+            aria-label="Language"
+          >
+            <option value="en">English</option>
+            <option value="zh-CN">简体中文</option>
+          </select>
+          <button
+            type="button"
+            id="mode-workspace"
+            class="icon-btn"
+            aria-label="Toggle color mode"
+          >
+            ☀
+          </button>
+          <button
+            type="button"
+            id="settings-btn"
+            class="icon-btn"
+            data-i18n-title="settings"
+            aria-label="Settings"
+          >
+            ⚙
+          </button>
+          <div class="user-menu-wrap">
+            <button
+              type="button"
+              id="user-menu-btn"
+              class="user-menu-btn"
+              aria-haspopup="menu"
+              aria-expanded="false"
+            >
+              <span id="auth-user"></span
+              ><span class="user-menu-chevron">▾</span>
+            </button>
+            <div id="user-menu" class="user-menu hidden" role="menu">
+              <button
+                type="button"
+                id="logout-btn"
+                role="menuitem"
+                data-i18n="logout"
+              >
+                Logout
+              </button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <section id="view-home" class="view hidden home-view">
+        <main class="home-content">
+          <div class="home-heading">
+            <div>
+              <h1 data-i18n="savedConnections">Saved connections</h1>
+              <p class="muted" data-i18n="savedConnectionsHint">
+                Manage encrypted SSH connection profiles.
+              </p>
+            </div>
+            <button
+              type="button"
+              id="home-add-btn"
+              class="btn primary auto-width"
+              data-i18n="addConnection"
+            >
+              Add connection
+            </button>
+          </div>
+          <div class="home-tools">
+            <input
+              type="search"
+              id="connection-search"
+              data-i18n-placeholder="searchConnections"
+              placeholder="Search connections"
+            />
+          </div>
+          <div id="connection-list" class="connection-grid"></div>
+          <div id="connection-empty" class="empty-state hidden">
+            <strong data-i18n="noConnections">No saved connections</strong
+            ><span class="muted" data-i18n="noConnectionsHint"
+              >Add a connection to get started.</span
+            >
+          </div>
+        </main>
+      </section>
+
+      <section id="view-terminal" class="view hidden terminal-view">
+        <div class="workspace-body">
+          <aside id="metrics-panel" class="metrics-panel">
+            <h3 data-i18n="server">Server</h3>
+            <div id="metric-target" class="metric-target">—</div>
+            <div class="sidebar-status-row">
+              <span data-i18n="status">Status</span
+              ><strong id="sidebar-status" class="status status-disconnected"
+                >—</strong
+              >
+            </div>
+            <div class="connection-actions">
+              <button
+                id="sidebar-disconnect"
+                class="btn danger"
+                data-i18n="disconnect"
+              >
+                Disconnect</button
+              ><button
+                id="sidebar-reconnect"
+                class="btn ghost"
+                data-i18n="reconnect"
+              >
+                Reconnect
+              </button>
+            </div>
+            <div class="metric">
+              <span>CPU</span><strong id="metric-cpu">—</strong>
+            </div>
+            <div class="meter"><i id="metric-cpu-bar"></i></div>
+            <div class="metric">
+              <span data-i18n="memory">Memory</span
+              ><strong id="metric-memory">—</strong>
+            </div>
+            <div class="meter"><i id="metric-memory-bar"></i></div>
+            <div class="metric">
+              <span data-i18n="networkDown">Network ↓</span
+              ><strong id="metric-rx">—</strong>
+            </div>
+            <div class="metric">
+              <span data-i18n="networkUp">Network ↑</span
+              ><strong id="metric-tx">—</strong>
+            </div>
+            <div class="metric">
+              <span data-i18n="load">Load</span
+              ><strong id="metric-load">—</strong>
+            </div>
+            <div class="metric">
+              <span data-i18n="uptime">Uptime</span
+              ><strong id="metric-uptime">—</strong>
+            </div>
+            <div class="metric">
+              <span data-i18n="latency">Latency</span
+              ><strong id="metric-latency">—</strong>
+            </div>
+            <div class="metric">
+              <span data-i18n="pane">Pane</span
+              ><strong id="pane-count">—</strong>
+            </div>
+          </aside>
+          <div
+            id="panel-resizer"
+            class="panel-resizer"
+            role="separator"
+            aria-orientation="vertical"
+            tabindex="0"
+          ></div>
+          <div class="terminal-area">
+            <div class="pane-toolbar">
+              <button
+                type="button"
+                id="split-right-btn"
+                class="btn ghost"
+                data-i18n-title="splitRight"
+                data-i18n="splitRight"
+              >
+                Split right
+              </button>
+              <button
+                type="button"
+                id="split-down-btn"
+                class="btn ghost"
+                data-i18n-title="splitDown"
+                data-i18n="splitDown"
+              >
+                Split down
+              </button>
+              <button
+                type="button"
+                id="close-pane-btn"
+                class="btn ghost"
+                data-i18n="closePane"
+              >
+                Close pane
+              </button>
+            </div>
+            <main id="terminal-stack" class="terminal-stack"></main>
+          </div>
+        </div>
+        <div id="term-error" class="term-error hidden" role="alert"></div>
+      </section>
+    </div>
+
+    <div id="terminal-context-menu" class="context-menu hidden" role="menu">
+      <button type="button" data-context-action="copy" data-i18n="copy">
+        Copy
+      </button>
+      <button type="button" data-context-action="paste" data-i18n="paste">
+        Paste
+      </button>
+      <button
+        type="button"
+        data-context-action="select-all"
+        data-i18n="selectAll"
+      >
+        Select all
+      </button>
+      <button
+        type="button"
+        data-context-action="clear"
+        data-i18n="clearTerminal"
+      >
+        Clear terminal
+      </button>
+      <hr />
+      <button
+        type="button"
+        data-context-action="split-right"
+        data-i18n="splitRight"
+      >
+        Split right
+      </button>
+      <button
+        type="button"
+        data-context-action="split-down"
+        data-i18n="splitDown"
+      >
+        Split down
+      </button>
+      <button
+        type="button"
+        data-context-action="close-pane"
+        data-i18n="closePane"
+      >
+        Close pane
+      </button>
+      <button
+        type="button"
+        data-context-action="close-other-panes"
+        data-i18n="closeOtherPanes"
+      >
+        Close other panes
+      </button>
+    </div>
+
+    <div
+      id="paste-modal"
+      class="modal hidden"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="paste-modal-title"
+    >
+      <div class="modal-backdrop" data-close-modal="paste"></div>
+      <div class="modal-window paste-modal-window">
+        <header class="modal-header">
+          <h2 id="paste-modal-title" data-i18n="confirmPaste">
+            Confirm multi-line paste
+          </h2>
+          <button
+            type="button"
+            class="icon-btn"
+            data-close-modal="paste"
+            aria-label="Close"
+          >
+            ×
+          </button>
+        </header>
+        <div class="modal-body">
+          <p id="paste-summary" class="muted"></p>
+          <pre id="paste-preview" class="paste-preview"></pre>
+        </div>
+        <footer class="modal-footer">
+          <button
+            type="button"
+            class="btn ghost"
+            data-close-modal="paste"
+            data-i18n="cancel"
+          >
+            Cancel</button
+          ><button
+            type="button"
+            id="confirm-paste-btn"
+            class="btn primary auto-width"
+            data-i18n="paste"
+          >
+            Paste
+          </button>
+        </footer>
+      </div>
+    </div>
+
+    <div
+      id="connection-modal"
+      class="modal hidden"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="connection-modal-title"
+    >
+      <div class="modal-backdrop" data-close-modal="connection"></div>
+      <div class="modal-window connection-modal-window">
+        <header class="modal-header">
+          <h2 id="connection-modal-title" data-i18n="connectionSettings">
+            Connection settings
+          </h2>
+          <button
+            type="button"
+            class="icon-btn"
+            data-close-modal="connection"
+            aria-label="Close"
+          >
+            ×
+          </button>
+        </header>
+        <div class="modal-body">
+          <div class="security-banner">
+            <strong data-i18n="securityNotice">Security notice:</strong>
+            <span data-i18n="securityText"
+              >The private key is sent to this WebSSH server and is only saved
+              when you explicitly choose encrypted storage.</span
+            >
+          </div>
+          <div id="hostkey-warning" class="warning-banner hidden">
+            <strong data-i18n="warning">Warning:</strong>
+            <span data-i18n="hostKeyWarning"
+              >Host key verification is disabled. Man-in-the-middle attacks are
+              possible.</span
+            >
+          </div>
+          <form id="connect-form">
+            <label
+              ><span data-i18n="connectionName">Connection name</span
+              ><input
+                type="text"
+                id="credential-name"
+                data-i18n-placeholder="connectionNamePlaceholder"
+                placeholder="Production server"
+            /></label>
+            <div class="row">
+              <label class="grow"
+                ><span data-i18n="host">Host</span
+                ><input
+                  type="text"
+                  id="ssh-host"
+                  placeholder="example.com"
+                  required /></label
+              ><label class="port"
+                ><span data-i18n="port">Port</span
+                ><input
+                  type="number"
+                  id="ssh-port"
+                  value="22"
+                  min="1"
+                  max="65535"
+                  required
+              /></label>
+            </div>
+            <label
+              ><span data-i18n="username">Username</span
+              ><input type="text" id="ssh-username" placeholder="root" required
+            /></label>
+            <label
+              ><span data-i18n="privateKey">Private Key</span
+              ><textarea
+                id="ssh-private-key"
+                rows="7"
+                placeholder="-----BEGIN OPENSSH PRIVATE KEY-----"
+                required
+              ></textarea>
+            </label>
+            <div class="row">
+              <label class="grow"
+                ><span data-i18n="uploadKey">Upload key file</span
+                ><input
+                  type="file"
+                  id="ssh-key-file"
+                  accept=".pem,.key,.txt,*" /></label
+              ><button
+                type="button"
+                id="clear-key-btn"
+                class="btn ghost"
+                data-i18n="clearKey"
+              >
+                Clear private key
+              </button>
+            </div>
+            <label
+              ><span data-i18n="passphraseOptional">Passphrase (optional)</span
+              ><input type="password" id="ssh-passphrase" autocomplete="off"
+            /></label>
+            <label
+              ><span data-i18n="terminalType">Terminal type</span
+              ><input type="text" id="ssh-term" value="xterm-256color"
+            /></label>
+            <label class="checkbox-row"
+              ><input type="checkbox" id="ssh-use-tmux" /><span
+                data-i18n="useTmux"
+                >Recover terminal with tmux after disconnect</span
+              ></label
+            >
+            <div id="connect-error" class="error" role="alert"></div>
+          </form>
+        </div>
+        <footer class="modal-footer">
+          <button
+            type="button"
+            class="btn ghost"
+            data-close-modal="connection"
+            data-i18n="cancel"
+          >
+            Cancel</button
+          ><button
+            type="button"
+            id="save-credential-btn"
+            class="btn ghost"
+            data-i18n="save"
+          >
+            Save</button
+          ><button
+            type="button"
+            id="connect-only-btn"
+            class="btn ghost"
+            data-i18n="connect"
+          >
+            Connect</button
+          ><button
+            type="button"
+            id="save-connect-btn"
+            class="btn primary auto-width"
+            data-i18n="saveConnect"
+          >
+            Save & Connect
+          </button>
+        </footer>
+      </div>
+    </div>
+
+    <div
+      id="settings-modal"
+      class="modal hidden"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="settings-modal-title"
+    >
+      <div class="modal-backdrop" data-close-modal="settings"></div>
+      <div class="modal-window settings-modal-window">
+        <header class="modal-header">
+          <h2 id="settings-modal-title" data-i18n="settings">Settings</h2>
+          <button
+            type="button"
+            class="icon-btn"
+            data-close-modal="settings"
+            aria-label="Close"
+          >
+            ×
+          </button>
+        </header>
+        <div class="modal-body settings-grid">
+          <label
+            ><span data-i18n="appearance">Appearance</span
+            ><select id="setting-ui">
+              <option value="auto" data-i18n="automatic">Automatic</option>
+              <option value="dark" data-i18n="dark">Dark</option>
+              <option value="light" data-i18n="light">Light</option>
+            </select></label
+          >
+          <label
+            ><span data-i18n="terminalTheme">Terminal theme</span
+            ><select id="setting-theme"></select
+          ></label>
+          <label
+            ><span data-i18n="font">Font</span
+            ><select id="setting-font">
+              <option
+                value='"JetBrains Mono", "Fira Code", "Cascadia Code", Menlo, Monaco, Consolas, "Noto Sans Mono CJK SC", monospace'
+              >
+                JetBrains / Fira
+              </option>
+              <option value="Menlo, Monaco, Consolas, monospace">
+                Menlo / Monaco
+              </option>
+              <option value="Consolas, monospace">Consolas</option>
+              <option value="monospace">monospace</option>
+              <option value="custom" data-i18n="customFont">
+                Custom font stack
+              </option>
+            </select></label
+          >
+          <label id="custom-font-row" class="settings-wide hidden"
+            ><span data-i18n="customFontNames"
+              >Local font names (fallback order)</span
+            ><input
+              type="text"
+              id="setting-custom-font"
+              data-i18n-placeholder="customFontPlaceholder"
+              placeholder="Maple Mono, Sarasa Mono SC, monospace"
+            /><small class="muted" data-i18n="customFontHint"
+              >Separate fonts with commas. The first available local font is
+              used.</small
+            ></label
+          >
+          <label
+            ><span data-i18n="fontSize">Font size</span
+            ><input
+              type="number"
+              id="setting-fontsize"
+              min="10"
+              max="28"
+              value="14"
+          /></label>
+          <label
+            ><span data-i18n="lineHeight">Line height</span
+            ><input
+              type="number"
+              id="setting-lineheight"
+              min="1"
+              max="2"
+              step="0.05"
+              value="1.2"
+          /></label>
+          <label class="checkbox-row"
+            ><input type="checkbox" id="setting-cursor-blink" checked /><span
+              data-i18n="cursorBlink"
+              >Cursor blink</span
+            ></label
+          >
+          <label class="checkbox-row"
+            ><input type="checkbox" id="setting-confirm-paste" checked /><span
+              data-i18n="confirmMultilinePaste"
+              >Confirm multi-line paste</span
+            ></label
+          >
+          <label class="checkbox-row"
+            ><input type="checkbox" id="setting-auto-copy" /><span
+              data-i18n="autoCopySelection"
+              >Automatically copy selected text</span
+            ></label
+          >
+        </div>
+        <footer class="modal-footer">
+          <button
+            type="button"
+            id="settings-confirm-btn"
+            class="btn primary auto-width"
+            data-i18n="confirm"
+          >
+            Confirm
+          </button>
+        </footer>
+      </div>
+    </div>
+
+    <script src="/vendor/xterm.js"></script>
+    <script src="/vendor/xterm-addon-fit.js"></script>
+    <script src="/themes.js?v=0.5.4"></script>
+    <script src="/app.js?v=0.5.4"></script>
+  </body>
+</html>

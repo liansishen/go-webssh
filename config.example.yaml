@@ -1,0 +1,37 @@
+server:
+  listen: "127.0.0.1:8080"
+  session_secret: "change-me-random-32bytes-min-16"
+  secure_cookie: false
+  # allowed_origins:
+  #   - "https://ssh.example.com"
+
+auth:
+  username: "admin"
+  # Prefer password_hash over plaintext password.
+  # password: "strong-password"
+  password_hash: "$2a$12$replace_with_bcrypt_hash"
+  session_ttl: "12h"
+
+ssh:
+  connect_timeout: "15s"
+  idle_timeout: "30m"
+  max_sessions: 5
+  # known-hosts (recommended) | insecure-ignore
+  host_key_policy: "known-hosts"
+  known_hosts_file: "./known_hosts"
+
+network_policy:
+  allow_private_ranges: false
+  deny:
+    - "127.0.0.0/8"
+    - "169.254.0.0/16"
+    - "::1/128"
+    - "0.0.0.0/8"
+
+logging:
+  level: "info"
+
+credentials:
+  # Credentials are encrypted with a key derived from the login password.
+  enabled: true
+  db_file: "./credentials.db"
