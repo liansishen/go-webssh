@@ -305,6 +305,8 @@
     autoCopy: $("setting-auto-copy"),
     stack: $("terminal-stack"),
     error: $("term-error"),
+    errorText: $("term-error-text"),
+    errorClose: $("term-error-close"),
     panel: $("metrics-panel"),
     resizer: $("panel-resizer"),
     sideStatus: $("sidebar-status"),
@@ -1324,9 +1326,23 @@
     e.metricLatency.textContent = e.paneCount.textContent = "—";
     resetMetricValues();
   }
+  let errorTimer = null;
+  function hideError() {
+    clearTimeout(errorTimer);
+    errorTimer = null;
+    e.errorText.textContent = "";
+    e.error.classList.add("hidden");
+  }
+  function scheduleErrorDismiss() {
+    clearTimeout(errorTimer);
+    errorTimer = setTimeout(hideError, 8000);
+  }
   function showError(message) {
-    e.error.textContent = message || "";
+    clearTimeout(errorTimer);
+    errorTimer = null;
+    e.errorText.textContent = message || "";
     e.error.classList.toggle("hidden", !message);
+    if (message) scheduleErrorDismiss();
   }
   function initResizer() {
     let dragging = false,
@@ -1497,6 +1513,14 @@
   [e.modeLogin, e.modeWorkspace].forEach((n) =>
     n.addEventListener("click", toggleMode),
   );
+  e.errorClose.addEventListener("click", hideError);
+  e.error.addEventListener("mouseenter", () => {
+    clearTimeout(errorTimer);
+    errorTimer = null;
+  });
+  e.error.addEventListener("mouseleave", () => {
+    if (!e.error.classList.contains("hidden")) scheduleErrorDismiss();
+  });
   e.ui.addEventListener("change", () => {
     readSettingsPreview();
   });

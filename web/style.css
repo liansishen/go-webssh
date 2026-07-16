@@ -539,6 +539,9 @@ textarea {
   left: 50%;
   bottom: 1rem;
   transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
   background: rgba(243, 139, 168, 0.15);
   border: 1px solid rgba(243, 139, 168, 0.45);
   color: var(--error);
@@ -546,6 +549,27 @@ textarea {
   border-radius: 8px;
   max-width: min(640px, calc(100% - 2rem));
   z-index: 20;
+}
+
+.term-error-close {
+  flex: 0 0 auto;
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: currentColor;
+  font: inherit;
+  font-size: 1.25rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.term-error-close:hover,
+.term-error-close:focus-visible {
+  background: rgba(243, 139, 168, 0.18);
+  outline: none;
 }
 
 body.fullscreen-mode .terminal-bar {
