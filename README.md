@@ -39,6 +39,38 @@
 
 ## 快速启动
 
+### Linux 一键安装
+
+公开仓库可直接运行：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/liansishen/go-webssh/main/install.sh | sudo bash
+```
+
+当前仓库为私有仓库时，先提供具有仓库读取权限的 Token：
+
+```bash
+export GITHUB_TOKEN='your-token'
+curl -fsSL \
+  -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+  https://raw.githubusercontent.com/liansishen/go-webssh/main/install.sh |
+  sudo -E bash
+```
+
+脚本支持 Linux amd64/arm64，会校验 Release 的 SHA256，安装到 `/usr/local/bin`，生成 `/etc/go-webssh/config.yaml` 并启用 systemd 服务。重复执行会升级二进制并保留已有配置。
+
+可在安装前通过环境变量覆盖默认值：
+
+```bash
+GOWEBSSH_VERSION=v0.5.5 \
+GOWEBSSH_LISTEN=127.0.0.1:8080 \
+GOWEBSSH_USERNAME=admin \
+GOWEBSSH_ALLOW_PRIVATE_RANGES=false \
+sudo -E bash install.sh
+```
+
+### 从源码启动
+
 ```bash
 cd go-webssh
 go test ./...

@@ -59,6 +59,8 @@ jobs:
           build_archive linux amd64
           build_archive linux arm64
 
+          cp install.sh dist/install.sh
+
           (cd dist && sha256sum ./* > SHA256SUMS)
 
       - name: Upload workflow artifacts
