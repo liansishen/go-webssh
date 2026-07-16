@@ -290,6 +290,21 @@ go test ./...
 go build -o go-webssh ./cmd/webssh
 ```
 
+## Tag 自动构建
+
+推送以 `v` 开头的 Tag 会触发 GitHub Actions，例如：
+
+```bash
+git tag v0.5.4
+git push origin v0.5.4
+```
+
+工作流会先执行测试和 `go vet`，然后交叉编译以下 Linux 平台，并自动创建或更新对应的 GitHub Release：
+
+- Linux amd64 / arm64
+
+Release 同时包含每个平台的压缩包和 `SHA256SUMS` 校验文件。构建时会把 Tag 名写入 `go-webssh --version`。
+
 ## 常见问题
 
 **Q: 连接失败提示 host key？**
