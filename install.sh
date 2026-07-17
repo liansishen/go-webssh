@@ -51,7 +51,7 @@ if [[ ${VERSION} == "latest" ]]; then
     --header "Accept: application/vnd.github+json" \
     --header "X-GitHub-Api-Version: 2022-11-28" \
     "https://api.github.com/repos/${REPOSITORY}/releases/latest")" || \
-    fail "Unable to query the latest release. For a private repository, export GITHUB_TOKEN first."
+    fail "Unable to query the latest release. If the API is rate-limited or the repo requires auth, export GITHUB_TOKEN first."
   VERSION="$(printf '%s' "${release_json}" | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n 1)"
   [[ -n ${VERSION} ]] || fail "The latest release response did not contain a tag name."
 fi

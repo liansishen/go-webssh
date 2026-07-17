@@ -49,23 +49,11 @@
 
 ### Linux 一键安装
 
-公开仓库：
-
 ```bash
 curl -fsSL https://raw.githubusercontent.com/liansishen/go-webssh/main/install.sh | sudo bash
 ```
 
-私有仓库需提供可读 Token：
-
-```bash
-export GITHUB_TOKEN='your-token'
-curl -fsSL \
-  -H "Authorization: Bearer ${GITHUB_TOKEN}" \
-  https://raw.githubusercontent.com/liansishen/go-webssh/main/install.sh |
-  sudo -E bash
-```
-
-脚本支持 Linux amd64/arm64，校验 Release SHA256，安装二进制、生成配置并启用 systemd。重复执行会升级二进制并保留已有配置。
+脚本支持 Linux amd64/arm64，校验 Release 的 SHA256，安装二进制、生成配置并启用 systemd。重复执行会升级二进制并保留已有配置。
 
 可选环境变量：
 
@@ -402,4 +390,4 @@ sudo ./scripts/deploy-test.sh
 
 ## License
 
-当前仓库未授予开源许可证。未经仓库所有者许可，不得复制、分发或用于衍生项目。
+本项目采用 [MIT License](./LICENSE) 开源。
