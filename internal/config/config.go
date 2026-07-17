@@ -18,6 +18,7 @@ type Config struct {
 	NetworkPolicy NetworkPolicyConfig `yaml:"network_policy"`
 	Logging       LoggingConfig       `yaml:"logging"`
 	Credentials   CredentialsConfig   `yaml:"credentials"`
+	UI            UIConfig            `yaml:"ui"`
 }
 
 type ServerConfig struct {
@@ -55,6 +56,12 @@ type LoggingConfig struct {
 type CredentialsConfig struct {
 	Enabled bool   `yaml:"enabled"`
 	DBFile  string `yaml:"db_file"`
+}
+
+type UIConfig struct {
+	// ThemesDir is a local directory of *.json xterm themes.
+	// Directory files overlay embedded defaults and can add new themes.
+	ThemesDir string `yaml:"themes_dir"`
 }
 
 // duration is a helper for YAML duration strings like "15s", "30m".
@@ -110,6 +117,9 @@ type rawConfig struct {
 		Enabled *bool  `yaml:"enabled"`
 		DBFile  string `yaml:"db_file"`
 	} `yaml:"credentials"`
+	UI struct {
+		ThemesDir string `yaml:"themes_dir"`
+	} `yaml:"ui"`
 }
 
 func Default() *Config {
@@ -147,6 +157,7 @@ func Default() *Config {
 			Level: "info",
 		},
 		Credentials: CredentialsConfig{Enabled: true, DBFile: "./credentials.db"},
+		UI:          UIConfig{ThemesDir: "./themes"},
 	}
 }
 
@@ -229,6 +240,9 @@ func applyRaw(cfg *Config, raw *rawConfig) {
 	if raw.Credentials.Enabled != nil {
 		cfg.Credentials.Enabled = *raw.Credentials.Enabled
 	}
+	if raw.UI.ThemesDir != "" {
+		cfg.UI.ThemesDir = raw.UI.ThemesDir
+	}
 }
 
 // ApplyEnv applies environment variable overrides.
@@ -262,6 +276,9 @@ func ApplyEnv(cfg *Config) {
 	}
 	if v := os.Getenv("GOWEBSSH_LOG_LEVEL"); v != "" {
 		cfg.Logging.Level = v
+	}
+	if v := os.Getenv("GOWEBSSH_THEMES_DIR"); v != "" {
+		cfg.UI.ThemesDir = v
 	}
 }
 

@@ -17,10 +17,11 @@ import (
 	"github.com/liansishen/go-webssh/internal/security"
 	"github.com/liansishen/go-webssh/internal/vault"
 	"github.com/liansishen/go-webssh/internal/ws"
+	"github.com/liansishen/go-webssh/themes"
 	"github.com/liansishen/go-webssh/web"
 )
 
-var version = "0.5.5"
+var version = "0.5.6"
 
 func main() {
 	var (
@@ -96,7 +97,14 @@ func main() {
 	}
 
 	wsHandler := ws.NewHandler(cfg, authenticator, policy, hostKeyCB, logger)
-	srv := httpserver.New(cfg, authenticator, wsHandler, credentialStore, http.FS(web.FS), logger)
+	themeCatalog := &themes.Catalog{Dir: cfg.UI.ThemesDir}
+	if names, err := themeCatalog.Names(); err != nil {
+		logger.Error("theme catalog error", "err", err)
+		os.Exit(1)
+	} else {
+		logger.Info("loaded terminal themes", "count", len(names), "dir", cfg.UI.ThemesDir)
+	}
+	srv := httpserver.New(cfg, authenticator, wsHandler, credentialStore, http.FS(web.FS), themeCatalog, logger)
 
 	go func() {
 		if err := srv.Start(); err != nil && err != http.ErrServerClosed {

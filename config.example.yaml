@@ -35,3 +35,8 @@ credentials:
   # Credentials are encrypted with a key derived from the login password.
   enabled: true
   db_file: "./credentials.db"
+
+ui:
+  # Local directory of *.json terminal themes (filename = theme id).
+  # Files here overlay embedded defaults and can add custom themes.
+  themes_dir: "./themes"

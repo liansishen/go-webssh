@@ -22,6 +22,7 @@
 - 私钥登录（ed25519 / RSA / ECDSA，支持 passphrase）
 - WebSocket 交互式终端（xterm.js + fit）
 - 终端 resize、主题/字体/字号等 UI 设置（localStorage）
+- 从本地 `themes/` 目录加载终端主题（内置默认主题可复制为模板，支持热加载新增）
 - Host Key：`known-hosts`（默认）或显式 `insecure-ignore`
 - Network Policy：默认拒绝 loopback / link-local / metadata / 私网（可配置）
 - 前端资源 `embed` 进单二进制
@@ -62,7 +63,7 @@ curl -fsSL \
 可在安装前通过环境变量覆盖默认值：
 
 ```bash
-GOWEBSSH_VERSION=v0.5.5 \
+GOWEBSSH_VERSION=v0.5.6 \
 GOWEBSSH_LISTEN=127.0.0.1:8080 \
 GOWEBSSH_USERNAME=admin \
 GOWEBSSH_ALLOW_PRIVATE_RANGES=false \
@@ -130,6 +131,9 @@ logging:
 credentials:
   enabled: true
   db_file: "./credentials.db"
+
+ui:
+  themes_dir: "./themes"
 ```
 
 启动：
@@ -158,6 +162,7 @@ credentials:
 | `GOWEBSSH_ALLOW_PRIVATE_RANGES` | `true` 允许 RFC1918 等私网 |
 | `GOWEBSSH_SECURE_COOKIE` | `true` 设置 Secure cookie |
 | `GOWEBSSH_LOG_LEVEL` | `debug`/`info`/`warn`/`error` |
+| `GOWEBSSH_THEMES_DIR` | 终端主题 JSON 目录（默认 `./themes`） |
 
 ## 生成 bcrypt password_hash
 
@@ -300,6 +305,44 @@ server:
   secure_cookie: true
 ```
 
+## 自定义终端主题
+
+终端主题使用 **xterm.js `ITheme` JSON**（颜色表），不是应用 UI 主题。
+
+- 内置默认主题已嵌入二进制，开箱即用
+- 仓库 [`themes/`](./themes) 提供同款 JSON，可复制为模板
+- 配置 `ui.themes_dir`（默认 `./themes`，环境变量 `GOWEBSSH_THEMES_DIR`）下的 `*.json` 会自动出现在设置页下拉框
+- 目录主题与内置主题**按文件名合并**：同名覆盖内置，新文件追加
+- 每次请求 `GET /themes.js` 与 `GET /api/config/ui` 都会重新扫描目录，**一般无需重启服务**；浏览器需刷新页面
+
+### 内置主题
+
+`github-light`、`solarized-light`、`catppuccin-latte`、`catppuccin-mocha`、`dracula`、`tokyo-night`、`one-dark`、`nord`
+
+> xterm.js 主题本身**不区分 light/dark 类型**，也没有官方 `type` 字段。名称中的 `light`/`dark` 仅作可读性约定；界面日夜间模式与终端主题是两套独立设置。
+
+### 添加主题
+
+```bash
+cp themes/catppuccin-mocha.json /path/to/themes_dir/my-theme.json
+# 编辑颜色后保存，强制刷新浏览器即可在下拉框中看到 my-theme
+```
+
+### JSON 格式
+
+文件名（不含 `.json`）即主题 id。最小字段：
+
+```json
+{
+  "background": "#1e1e2e",
+  "foreground": "#cdd6f4"
+}
+```
+
+推荐完整调色板：`background`、`foreground`、`cursor`、`cursorAccent`、`selectionBackground`，以及 ANSI 16 色（`black`…`white` 与 `brightBlack`…`brightWhite`）。可选 `name` 字段仅作元数据，不参与主题 id。
+
+详细说明见 [`themes/README.md`](./themes/README.md)。
+
 ## API 摘要
 
 - `GET /` 前端
@@ -307,7 +350,8 @@ server:
 - `POST /api/login` JSON `{username,password,remember}`
 - `POST /api/logout`
 - `GET /api/session`
-- `GET /api/config/ui`
+- `GET /api/config/ui`（含主题列表 `themes`、主题目录 `themesDir`）
+- `GET /themes.js`（动态生成 `window.GOWEBSSH_THEMES`）
 - `GET /api/ws/ssh` WebSocket（需登录；首条消息 `connect`）
 - `GET /api/credentials` 加密凭据摘要列表
 - `POST /api/credentials` 新增或更新加密凭据
@@ -322,13 +366,22 @@ go test ./...
 go build -o go-webssh ./cmd/webssh
 ```
 
+### 本地测试服务部署
+
+开发机可使用 [`scripts/deploy-test.sh`](./scripts/deploy-test.sh) 一键测试、构建并重启本机 systemd 服务（保留现有配置）：
+
+```bash
+sudo ./scripts/deploy-test.sh
+```
+
+
 ## Tag 自动构建
 
 推送以 `v` 开头的 Tag 会触发 GitHub Actions，例如：
 
 ```bash
-git tag v0.5.4
-git push origin v0.5.4
+git tag v0.5.6
+git push origin v0.5.6
 ```
 
 工作流会先执行测试和 `go vet`，然后交叉编译以下 Linux 平台，并自动创建或更新对应的 GitHub Release：

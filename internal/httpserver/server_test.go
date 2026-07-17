@@ -36,7 +36,7 @@ func testServer(t *testing.T) *Server {
 	}
 	assets := fstest.MapFS{"index.html": {Data: []byte("index")}}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	return New(cfg, a, &ws.Handler{}, nil, http.FS(assets), logger)
+	return New(cfg, a, &ws.Handler{}, nil, http.FS(assets), nil, logger)
 }
 
 func TestDocumentedHTTPAPI(t *testing.T) {
@@ -113,7 +113,7 @@ func TestEncryptedCredentialAPI(t *testing.T) {
 	defer store.Close()
 	a := &auth.Authenticator{Username: "admin", Password: "secret", Store: auth.NewStore(time.Hour), TTL: time.Hour, SessionSecret: cfg.Server.SessionSecret, VaultSalt: store.Salt()}
 	assets := fstest.MapFS{"index.html": {Data: []byte("index")}}
-	s := New(cfg, a, &ws.Handler{}, store, http.FS(assets), slog.New(slog.NewTextHandler(io.Discard, nil)))
+	s := New(cfg, a, &ws.Handler{}, store, http.FS(assets), nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	login := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/login", strings.NewReader(`{"username":"admin","password":"secret"}`))
 	req.Header.Set("Content-Type", "application/json")
@@ -148,5 +148,24 @@ func TestEncryptedCredentialAPI(t *testing.T) {
 	deleted := call(http.MethodDelete, "/api/credentials/"+summary.ID, "")
 	if deleted.Code != http.StatusOK {
 		t.Fatalf("delete: %d", deleted.Code)
+	}
+}
+
+func TestThemesJSAndUIConfig(t *testing.T) {
+	s := testServer(t)
+
+	js := httptest.NewRecorder()
+	s.server.Handler.ServeHTTP(js, httptest.NewRequest(http.MethodGet, "/themes.js", nil))
+	if js.Code != http.StatusOK || !strings.Contains(js.Body.String(), "window.GOWEBSSH_THEMES") {
+		t.Fatalf("themes.js: status=%d body=%s", js.Code, js.Body.String())
+	}
+	if !strings.Contains(js.Body.String(), "catppuccin-mocha") {
+		t.Fatalf("themes.js missing default theme: %s", js.Body.String())
+	}
+
+	ui := httptest.NewRecorder()
+	s.server.Handler.ServeHTTP(ui, httptest.NewRequest(http.MethodGet, "/api/config/ui", nil))
+	if ui.Code != http.StatusOK || !strings.Contains(ui.Body.String(), `"themes"`) {
+		t.Fatalf("ui config themes: status=%d body=%s", ui.Code, ui.Body.String())
 	}
 }

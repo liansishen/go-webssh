@@ -53,6 +53,8 @@ jobs:
               -ldflags "-s -w -X main.version=${VERSION}" \
               -o "${dir}/go-webssh" ./cmd/webssh
             cp README.md config.example.yaml "${dir}/"
+            mkdir -p "${dir}/themes"
+            cp themes/*.json themes/README.md "${dir}/themes/"
             tar -C package -czf "dist/${name}.tar.gz" "${name}"
           }
 

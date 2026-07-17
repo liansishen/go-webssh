@@ -127,6 +127,9 @@ logging:
 credentials:
   enabled: true
   db_file: "${DATA_DIR}/credentials.db"
+
+ui:
+  themes_dir: "${DATA_DIR}/themes"
 EOF
   chown root:"${SERVICE_USER}" "${config_file}"
   chmod 0640 "${config_file}"
@@ -134,6 +137,8 @@ EOF
 else
   log "Keeping existing configuration: ${config_file}"
 fi
+
+install -d -m 0750 -o "${SERVICE_USER}" -g "${SERVICE_USER}" "${DATA_DIR}/themes"
 
 unit_file="/etc/systemd/system/${SERVICE_NAME}.service"
 cat >"${unit_file}" <<EOF

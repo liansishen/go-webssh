@@ -16,28 +16,34 @@ import (
 	"github.com/liansishen/go-webssh/internal/config"
 	"github.com/liansishen/go-webssh/internal/vault"
 	"github.com/liansishen/go-webssh/internal/ws"
+	"github.com/liansishen/go-webssh/themes"
 )
 
 type Server struct {
-	cfg      *config.Config
-	auth     *auth.Authenticator
-	ws       *ws.Handler
-	logger   *slog.Logger
-	mux      *http.ServeMux
-	server   *http.Server
-	staticFS http.FileSystem
-	vault    *vault.Store
+	cfg          *config.Config
+	auth         *auth.Authenticator
+	ws           *ws.Handler
+	logger       *slog.Logger
+	mux          *http.ServeMux
+	server       *http.Server
+	staticFS     http.FileSystem
+	vault        *vault.Store
+	themeCatalog *themes.Catalog
 }
 
-func New(cfg *config.Config, authenticator *auth.Authenticator, wsHandler *ws.Handler, credentialStore *vault.Store, staticFS http.FileSystem, logger *slog.Logger) *Server {
+func New(cfg *config.Config, authenticator *auth.Authenticator, wsHandler *ws.Handler, credentialStore *vault.Store, staticFS http.FileSystem, themeCatalog *themes.Catalog, logger *slog.Logger) *Server {
+	if themeCatalog == nil {
+		themeCatalog = &themes.Catalog{Dir: cfg.UI.ThemesDir}
+	}
 	s := &Server{
-		cfg:      cfg,
-		auth:     authenticator,
-		ws:       wsHandler,
-		logger:   logger,
-		mux:      http.NewServeMux(),
-		staticFS: staticFS,
-		vault:    credentialStore,
+		cfg:          cfg,
+		auth:         authenticator,
+		ws:           wsHandler,
+		logger:       logger,
+		mux:          http.NewServeMux(),
+		staticFS:     staticFS,
+		vault:        credentialStore,
+		themeCatalog: themeCatalog,
 	}
 	s.routes()
 	s.server = &http.Server{
@@ -67,7 +73,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /", s.handleIndex)
 	s.mux.HandleFunc("GET /app.js", s.serveStatic)
 	s.mux.HandleFunc("GET /style.css", s.serveStatic)
-	s.mux.HandleFunc("GET /themes.js", s.serveStatic)
+	s.mux.HandleFunc("GET /themes.js", s.handleThemesJS)
 	s.mux.HandleFunc("GET /favicon.svg", s.serveStatic)
 	s.mux.HandleFunc("GET /vendor/", s.serveStatic)
 }
@@ -174,23 +180,30 @@ func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleUIConfig(w http.ResponseWriter, r *http.Request) {
+	themeNames, err := s.themeCatalog.Names()
+	if err != nil {
+		s.logger.Error("load themes", "err", err)
+		writeErr(w, http.StatusInternalServerError, "THEMES_LOAD_FAILED", "failed to load terminal themes")
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"hostKeyPolicy":         s.cfg.SSH.HostKeyPolicy,
 		"privateKeyPersistence": "memory-only",
 		"maxPrivateKeyBytes":    131072,
 		"allowPrivateRanges":    s.cfg.NetworkPolicy.AllowPrivateRanges,
 		"credentialStorage":     s.vault != nil,
-		"themes": []string{
-			"github-light",
-			"solarized-light",
-			"catppuccin-latte",
-			"catppuccin-mocha",
-			"dracula",
-			"tokyo-night",
-			"one-dark",
-			"nord",
-		},
+		"themesDir":             s.cfg.UI.ThemesDir,
+		"themes":                themeNames,
 	})
+}
+
+func (s *Server) handleThemesJS(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-cache, must-revalidate")
+	if err := s.themeCatalog.WriteJS(w); err != nil {
+		s.logger.Error("write themes.js", "err", err)
+		http.Error(w, "failed to load themes", http.StatusInternalServerError)
+	}
 }
 
 type credentialSummary struct {

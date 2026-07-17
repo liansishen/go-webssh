@@ -104,3 +104,30 @@ func TestCredentialStorageConfig(t *testing.T) {
 		t.Fatal("explicit disabled setting was ignored")
 	}
 }
+
+func TestThemesDirConfig(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	content := `
+server:
+  listen: "127.0.0.1:8080"
+  session_secret: "abcdefghijklmnopqrstuv"
+auth:
+  username: "admin"
+  password: "pw"
+ssh:
+  host_key_policy: "insecure-ignore"
+ui:
+  themes_dir: "/var/lib/go-webssh/themes"
+`
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.UI.ThemesDir != "/var/lib/go-webssh/themes" {
+		t.Fatalf("themes_dir=%q", cfg.UI.ThemesDir)
+	}
+}
