@@ -63,7 +63,7 @@ curl -fsSL \
 可在安装前通过环境变量覆盖默认值：
 
 ```bash
-GOWEBSSH_VERSION=v0.5.6 \
+GOWEBSSH_VERSION=v0.5.7 \
 GOWEBSSH_LISTEN=127.0.0.1:8080 \
 GOWEBSSH_USERNAME=admin \
 GOWEBSSH_ALLOW_PRIVATE_RANGES=false \
@@ -380,8 +380,8 @@ sudo ./scripts/deploy-test.sh
 推送以 `v` 开头的 Tag 会触发 GitHub Actions，例如：
 
 ```bash
-git tag v0.5.6
-git push origin v0.5.6
+git tag v0.5.7
+git push origin v0.5.7
 ```
 
 工作流会先执行测试和 `go vet`，然后交叉编译以下 Linux 平台，并自动创建或更新对应的 GitHub Release：
