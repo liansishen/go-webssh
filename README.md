@@ -23,6 +23,7 @@
 - WebSocket 交互式终端（xterm.js + fit）
 - 终端 resize、主题/字体/字号等 UI 设置（localStorage）
 - 从本地 `themes/` 目录加载终端主题（内置默认主题可复制为模板，支持热加载新增）
+- 主题选择器显示色块预览与美化名称（如下拉中的 `Catppuccin Mocha`）
 - Host Key：`known-hosts`（默认）或显式 `insecure-ignore`
 - Network Policy：默认拒绝 loopback / link-local / metadata / 私网（可配置）
 - 前端资源 `embed` 进单二进制
@@ -30,12 +31,13 @@
 - 应用内多连接标签页；每个标签最多包含 4 个独立 SSH 窗格
 - 网络中断最多自动重连 5 次；启用 tmux 时恢复原远端终端
 - Linux 服务器 CPU、内存、网络、负载、运行时间和 WebSocket 往返延迟实时监控
+- 监控侧栏可折叠为窄轨；折叠时不刷新监控 DOM，窄轨提供断开/重连图标与状态点
 - 登录后主页统一管理保存的连接，连接和终端设置使用模态窗口
-- English/简体中文即时切换，以及登录前后的日间/夜间快捷按钮
-- 终端监控侧栏支持拖动宽度，并提供单会话断开和重连操作
+- English/简体中文通过语言图标下拉切换；日间/夜间快捷按钮
+- 只读快捷键面板（顶栏键盘图标）；分屏/关窗格/切窗格/折叠侧栏等快捷键
 - 终端支持自定义多个本机字体名称，并遵循 CSS fallback 顺序
 - 每个服务器标签支持最多 4 个独立 SSH 窗格，可向右/向下分屏、四宫格显示并拖动分隔线
-- 终端右键使用自定义菜单，提供复制、粘贴、全选、清屏、分屏和窗格关闭操作
+- 终端右键自定义菜单（含快捷键提示），提供复制、粘贴、全选、清屏、分屏和窗格关闭
 - 支持 `Ctrl+Shift+C/V`（macOS 为 `Cmd+C/V`）复制粘贴，多行或控制字符粘贴可安全确认
 
 ## 快速启动
@@ -63,7 +65,7 @@ curl -fsSL \
 可在安装前通过环境变量覆盖默认值：
 
 ```bash
-GOWEBSSH_VERSION=v0.5.7 \
+GOWEBSSH_VERSION=v0.5.8 \
 GOWEBSSH_LISTEN=127.0.0.1:8080 \
 GOWEBSSH_USERNAME=admin \
 GOWEBSSH_ALLOW_PRIVATE_RANGES=false \
@@ -343,6 +345,25 @@ cp themes/catppuccin-mocha.json /path/to/themes_dir/my-theme.json
 
 详细说明见 [`themes/README.md`](./themes/README.md)。
 
+## 键盘快捷键
+
+终端页可用（焦点在 xterm 内同样生效）。按键以独立键帽展示，无 `+` 连接符。
+
+| 动作 | Windows / Linux | macOS |
+|---|---|---|
+| 折叠/展开侧栏 | Ctrl Shift \ | Ctrl Shift \ |
+| 向右分屏 | Ctrl Shift → | Ctrl Shift → |
+| 向下分屏 | Ctrl Shift ↓ | Ctrl Shift ↓ |
+| 关闭窗格 | Ctrl Shift X | Ctrl Shift X |
+| 下一/上一窗格 | Ctrl Shift ] / [ | Ctrl Shift ] / [ |
+| 复制 / 粘贴 | Ctrl Shift C / V | ⌘ C / ⌘ V |
+
+说明：
+
+- 避免使用会关闭浏览器窗口/标签的组合（如 `Ctrl+Shift+W`、`Ctrl+PageUp/Down`）
+- 应用内「快捷键」面板仅供查看，当前版本不可自定义
+- 右键菜单会对已绑定操作显示对应快捷键
+
 ## API 摘要
 
 - `GET /` 前端
@@ -380,8 +401,8 @@ sudo ./scripts/deploy-test.sh
 推送以 `v` 开头的 Tag 会触发 GitHub Actions，例如：
 
 ```bash
-git tag v0.5.7
-git push origin v0.5.7
+git tag v0.5.8
+git push origin v0.5.8
 ```
 
 工作流会先执行测试和 `go vet`，然后交叉编译以下 Linux 平台，并自动创建或更新对应的 GitHub Release：

@@ -3,6 +3,101 @@
   "use strict";
   const STORAGE_KEY = "gowebssh.ui";
   const $ = (id) => document.getElementById(id);
+  const IS_MAC = /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent);
+  // Avoid Alt (OS/browser rectangular selection) and browser tab shortcuts.
+  // Use Ctrl+Shift chords and capture-phase handlers so xterm does not swallow them.
+  const SHORTCUT_DEFS = [
+    {
+      id: "togglePanel",
+      labelKey: "shortcutTogglePanel",
+      keys: { mac: ["Ctrl", "Shift", "\\"], win: ["Ctrl", "Shift", "\\"] },
+      match: (ev) =>
+        (ev.ctrlKey || ev.metaKey) &&
+        ev.shiftKey &&
+        !ev.altKey &&
+        (ev.code === "Backslash" || ev.key === "\\" || ev.key === "|"),
+    },
+    {
+      id: "splitRight",
+      labelKey: "shortcutSplitRight",
+      keys: { mac: ["Ctrl", "Shift", "→"], win: ["Ctrl", "Shift", "→"] },
+      match: (ev) =>
+        (ev.ctrlKey || ev.metaKey) &&
+        ev.shiftKey &&
+        !ev.altKey &&
+        (ev.code === "ArrowRight" || ev.key === "ArrowRight"),
+    },
+    {
+      id: "splitDown",
+      labelKey: "shortcutSplitDown",
+      keys: { mac: ["Ctrl", "Shift", "↓"], win: ["Ctrl", "Shift", "↓"] },
+      match: (ev) =>
+        (ev.ctrlKey || ev.metaKey) &&
+        ev.shiftKey &&
+        !ev.altKey &&
+        (ev.code === "ArrowDown" || ev.key === "ArrowDown"),
+    },
+    {
+      id: "closePane",
+      labelKey: "shortcutClosePane",
+      keys: { mac: ["Ctrl", "Shift", "X"], win: ["Ctrl", "Shift", "X"] },
+      match: (ev) =>
+        (ev.ctrlKey || ev.metaKey) &&
+        ev.shiftKey &&
+        !ev.altKey &&
+        (ev.code === "KeyX" || ev.key.toLowerCase?.() === "x"),
+    },
+    {
+      id: "nextPane",
+      labelKey: "shortcutNextPane",
+      keys: { mac: ["Ctrl", "Shift", "]"], win: ["Ctrl", "Shift", "]"] },
+      match: (ev) =>
+        (ev.ctrlKey || ev.metaKey) &&
+        ev.shiftKey &&
+        !ev.altKey &&
+        (ev.code === "BracketRight" || ev.key === "]" || ev.key === "}"),
+    },
+    {
+      id: "prevPane",
+      labelKey: "shortcutPrevPane",
+      keys: { mac: ["Ctrl", "Shift", "["], win: ["Ctrl", "Shift", "["] },
+      match: (ev) =>
+        (ev.ctrlKey || ev.metaKey) &&
+        ev.shiftKey &&
+        !ev.altKey &&
+        (ev.code === "BracketLeft" || ev.key === "[" || ev.key === "{"),
+    },
+    {
+      id: "copy",
+      labelKey: "shortcutCopy",
+      keys: { mac: ["⌘", "C"], win: ["Ctrl", "Shift", "C"] },
+      contextOnly: true,
+      match: (ev) =>
+        IS_MAC
+          ? ev.metaKey && !ev.ctrlKey && !ev.shiftKey && !ev.altKey && (ev.code === "KeyC" || ev.key.toLowerCase?.() === "c")
+          : ev.ctrlKey && ev.shiftKey && !ev.altKey && (ev.code === "KeyC" || ev.key.toLowerCase?.() === "c"),
+    },
+    {
+      id: "paste",
+      labelKey: "shortcutPaste",
+      keys: { mac: ["⌘", "V"], win: ["Ctrl", "Shift", "V"] },
+      contextOnly: true,
+      match: (ev) =>
+        IS_MAC
+          ? ev.metaKey && !ev.ctrlKey && !ev.shiftKey && !ev.altKey && (ev.code === "KeyV" || ev.key.toLowerCase?.() === "v")
+          : ev.ctrlKey && ev.shiftKey && !ev.altKey && (ev.code === "KeyV" || ev.key.toLowerCase?.() === "v"),
+    },
+  ];
+
+  function shortcutKeys(id) {
+    const def = SHORTCUT_DEFS.find((item) => item.id === id);
+    if (!def) return [];
+    return IS_MAC ? def.keys.mac : def.keys.win;
+  }
+  function renderKeyCaps(keys) {
+    if (!keys || !keys.length) return "";
+    return keys.map((key) => "<kbd class=\"keycap\">" + key + "</kbd>").join("");
+  }
   const I18N = {
     en: {
       signInContinue: "Sign in to continue",
@@ -124,6 +219,20 @@
       sessionLimit: "Maximum concurrent sessions exceeded.",
       connectionFailed: "SSH connection failed.",
       reconnectExhausted: "Automatic reconnect stopped after 5 attempts.",
+      language: "Language",
+      shortcuts: "Keyboard shortcuts",
+      shortcutsReadonlyHint: "Shortcuts are read-only in this version.",
+      collapsePanel: "Collapse sidebar",
+      expandPanel: "Expand sidebar",
+      resourceMetrics: "Resources",
+      shortcutTogglePanel: "Toggle sidebar",
+      shortcutSplitRight: "Split pane right",
+      shortcutSplitDown: "Split pane down",
+      shortcutClosePane: "Close pane",
+      shortcutNextPane: "Next pane",
+      shortcutPrevPane: "Previous pane",
+      shortcutCopy: "Copy selection",
+      shortcutPaste: "Paste",
     },
     "zh-CN": {
       signInContinue: "登录以继续",
@@ -243,6 +352,20 @@
       sessionLimit: "已达到最大并发会话数。",
       connectionFailed: "SSH 连接失败。",
       reconnectExhausted: "自动重连已达到 5 次，现已停止。",
+      language: "语言",
+      shortcuts: "键盘快捷键",
+      shortcutsReadonlyHint: "当前版本仅支持查看快捷键，暂不可自定义。",
+      collapsePanel: "折叠侧栏",
+      expandPanel: "展开侧栏",
+      resourceMetrics: "资源监控",
+      shortcutTogglePanel: "折叠/展开侧栏",
+      shortcutSplitRight: "向右分屏",
+      shortcutSplitDown: "向下分屏",
+      shortcutClosePane: "关闭窗格",
+      shortcutNextPane: "下一个窗格",
+      shortcutPrevPane: "上一个窗格",
+      shortcutCopy: "复制选区",
+      shortcutPaste: "粘贴",
     },
   };
   const views = {
@@ -264,9 +387,26 @@
     logout: $("logout-btn"),
     langLogin: $("language-login"),
     langWorkspace: $("language-workspace"),
+    langMenuLogin: $("lang-menu-login"),
+    langMenuWorkspace: $("lang-menu-workspace"),
     modeLogin: $("mode-login"),
     modeWorkspace: $("mode-workspace"),
+    shortcutsBtn: $("shortcuts-btn"),
+    shortcutsModal: $("shortcuts-modal"),
+    shortcutsList: $("shortcuts-list"),
     settingsBtn: $("settings-btn"),
+    panelCollapseBtn: $("panel-collapse-btn"),
+    panelExpandBtn: $("panel-expand-btn"),
+    railDisconnect: $("rail-disconnect"),
+    railReconnect: $("rail-reconnect"),
+    railStatusDot: $("rail-status-dot"),
+    metricsWaiting: $("metrics-waiting"),
+    metricsValues: $("metrics-values"),
+    themePicker: $("theme-picker"),
+    themePickerBtn: $("theme-picker-btn"),
+    themePickerMenu: $("theme-picker-menu"),
+    themePickerLabel: $("theme-picker-label"),
+    themePickerSwatches: $("theme-picker-swatches"),
     settingsConfirm: $("settings-confirm-btn"),
     homeTab: $("home-tab"),
     tabs: $("terminal-tabs"),
@@ -323,9 +463,6 @@
     metricUptime: $("metric-uptime"),
     metricLatency: $("metric-latency"),
     paneCount: $("pane-count"),
-    splitRight: $("split-right-btn"),
-    splitDown: $("split-down-btn"),
-    closePane: $("close-pane-btn"),
     contextMenu: $("terminal-context-menu"),
     pasteModal: $("paste-modal"),
     pasteSummary: $("paste-summary"),
@@ -359,6 +496,9 @@
         ? "zh-CN"
         : "en",
       panelWidth: 210,
+      panelCollapsed:
+        typeof matchMedia === "function" &&
+        matchMedia("(max-width: 620px)").matches,
     };
   }
   function loadSettings() {
@@ -393,6 +533,7 @@
         autoCopySelection: settings.autoCopySelection,
         language: settings.language,
         panelWidth: settings.panelWidth,
+        panelCollapsed: !!settings.panelCollapsed,
       }),
     );
   }
@@ -440,7 +581,15 @@
   }
   function applyLanguage() {
     document.documentElement.lang = settings.language;
-    e.langLogin.value = e.langWorkspace.value = settings.language;
+    const langTitle =
+      t("language") +
+      " · " +
+      (settings.language === "zh-CN" ? "简体中文" : "English");
+    [e.langLogin, e.langWorkspace].forEach((btn) => {
+      if (!btn) return;
+      btn.title = langTitle;
+      btn.setAttribute("aria-label", langTitle);
+    });
     document
       .querySelectorAll("[data-i18n]")
       .forEach((n) => (n.textContent = t(n.dataset.i18n)));
@@ -451,9 +600,48 @@
       n.title = t(n.dataset.i18nTitle);
       n.setAttribute("aria-label", t(n.dataset.i18nTitle));
     });
+    updateShortcutLabels();
+    renderShortcutsList();
+    syncLangMenus();
     renderHome();
     sessions.forEach(updateTab);
     updateSidebar();
+  }
+  function setLanguage(lang) {
+    if (lang !== "en" && lang !== "zh-CN") return;
+    settings.language = lang;
+    saveSettings();
+    applyLanguage();
+    applyMode();
+    closeLangMenus();
+  }
+  function syncLangMenus() {
+    document.querySelectorAll(".lang-menu [data-lang]").forEach((btn) => {
+      btn.setAttribute(
+        "aria-selected",
+        String(btn.dataset.lang === settings.language),
+      );
+    });
+  }
+  function closeLangMenus() {
+    [e.langMenuLogin, e.langMenuWorkspace].forEach((menu) =>
+      menu?.classList.add("hidden"),
+    );
+    [e.langLogin, e.langWorkspace].forEach((btn) =>
+      btn?.setAttribute("aria-expanded", "false"),
+    );
+  }
+  function toggleLangMenu(which) {
+    const btn = which === "login" ? e.langLogin : e.langWorkspace;
+    const menu = which === "login" ? e.langMenuLogin : e.langMenuWorkspace;
+    if (!btn || !menu) return;
+    const open = menu.classList.contains("hidden");
+    closeLangMenus();
+    if (open) {
+      syncLangMenus();
+      menu.classList.remove("hidden");
+      btn.setAttribute("aria-expanded", "true");
+    }
   }
   function effectiveLight() {
     return (
@@ -500,25 +688,131 @@
     if (
       e.connectionModal.classList.contains("hidden") &&
       e.settingsModal.classList.contains("hidden") &&
-      e.pasteModal.classList.contains("hidden")
+      e.pasteModal.classList.contains("hidden") &&
+      e.shortcutsModal.classList.contains("hidden")
     )
       document.body.classList.remove("modal-open");
   }
+  const THEME_NAME_OVERRIDES = {
+    "github-light": "GitHub Light",
+    "one-dark": "One Dark",
+    "solarized-light": "Solarized Light",
+    "solarized-dark": "Solarized Dark",
+    "tokyo-night": "Tokyo Night",
+    "catppuccin-latte": "Catppuccin Latte",
+    "catppuccin-mocha": "Catppuccin Mocha",
+    "ayu-dark": "Ayu Dark",
+    "material-darker": "Material Darker",
+    "rose-pine": "Rosé Pine",
+    "everforest-dark": "Everforest Dark",
+    "kanagawa-wave": "Kanagawa Wave",
+    "gruvbox-dark": "Gruvbox Dark",
+    "gruvbox-light": "Gruvbox Light",
+  };
+  function prettyThemeName(id) {
+    if (THEME_NAME_OVERRIDES[id]) return THEME_NAME_OVERRIDES[id];
+    return String(id || "")
+      .split(/[-_\s]+/)
+      .filter(Boolean)
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+      .join(" ");
+  }
+  function themeSwatchHTML(theme) {
+    const colors = [
+      theme?.background,
+      theme?.foreground,
+      theme?.blue || theme?.cursor,
+      theme?.green || theme?.selectionBackground,
+    ].filter(Boolean);
+    return colors
+      .map((c) => '<i style="background:' + c + '"></i>')
+      .join("");
+  }
+  function themeIds() {
+    return uiConfig.themes || Object.keys(GOWEBSSH_THEMES || {});
+  }
   function populateThemes() {
     e.theme.innerHTML = "";
-    (uiConfig.themes || Object.keys(GOWEBSSH_THEMES)).forEach((name) =>
-      e.theme.add(new Option(name, name)),
-    );
+    themeIds().forEach((name) => {
+      const opt = new Option(prettyThemeName(name), name);
+      e.theme.add(opt);
+    });
+    if (![...e.theme.options].some((o) => o.value === settings.theme)) {
+      const fallback = themeIds()[0] || "catppuccin-mocha";
+      settings.theme = fallback;
+    }
+    e.theme.value = settings.theme;
+    renderThemePicker();
   }
   function terminalTheme() {
     return (
       GOWEBSSH_THEMES[settings.theme] || GOWEBSSH_THEMES["catppuccin-mocha"]
     );
   }
+  function renderThemePicker() {
+    if (!e.themePickerBtn || !e.themePickerMenu) return;
+    const current = settings.theme;
+    const currentTheme = GOWEBSSH_THEMES[current] || terminalTheme();
+    if (e.themePickerLabel)
+      e.themePickerLabel.textContent = prettyThemeName(current);
+    if (e.themePickerSwatches)
+      e.themePickerSwatches.innerHTML = themeSwatchHTML(currentTheme);
+    e.themePickerMenu.innerHTML = "";
+    themeIds().forEach((name) => {
+      const theme = GOWEBSSH_THEMES[name] || {};
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "theme-option";
+      btn.role = "option";
+      btn.dataset.theme = name;
+      btn.setAttribute("aria-selected", String(name === current));
+      btn.innerHTML =
+        '<span class="theme-swatches">' +
+        themeSwatchHTML(theme) +
+        '</span><span class="theme-option-label"></span>';
+      btn.querySelector(".theme-option-label").textContent = prettyThemeName(name);
+      btn.addEventListener("click", () => {
+        selectTheme(name);
+        closeThemePicker();
+      });
+      e.themePickerMenu.appendChild(btn);
+    });
+  }
+  function selectTheme(name) {
+    settings.theme = name;
+    if (e.theme) e.theme.value = name;
+    renderThemePicker();
+    sessions.forEach(applyTerminalSettings);
+  }
+  function openThemePicker() {
+    if (!e.themePickerMenu) return;
+    renderThemePicker();
+    e.themePickerMenu.classList.remove("hidden");
+    e.themePickerBtn?.setAttribute("aria-expanded", "true");
+  }
+  function closeThemePicker() {
+    e.themePickerMenu?.classList.add("hidden");
+    e.themePickerBtn?.setAttribute("aria-expanded", "false");
+  }
+  function toggleThemePicker() {
+    if (!e.themePickerMenu) return;
+    if (e.themePickerMenu.classList.contains("hidden")) openThemePicker();
+    else closeThemePicker();
+  }
   function applyTerminalSettings(s) {
     const theme = terminalTheme();
-    s.container.style.setProperty("--terminal-background", theme.background);
-    s.pane.style.setProperty("--terminal-background", theme.background);
+    const bg = theme.background || "#1e1e2e";
+    const fg = theme.foreground || "#cdd6f4";
+    s.container.style.setProperty("--terminal-background", bg);
+    s.container.style.setProperty("--terminal-foreground", fg);
+    s.container.style.background = bg;
+    s.pane.style.setProperty("--terminal-background", bg);
+    s.pane.style.background = bg;
+    const atBottom = isTerminalAtBottom(s.term);
+    let viewportY = 0;
+    try {
+      viewportY = s.term.buffer.active.viewportY;
+    } catch (_) {}
     s.term.options = {
       theme: { ...theme },
       fontFamily: settings.fontFamily,
@@ -527,14 +821,20 @@
       cursorBlink: !!settings.cursorBlink,
       letterSpacing: 1,
       rescaleOverlappingGlyphs: true,
+      scrollOnUserInput: true,
     };
     s.term.clearTextureAtlas();
     s.term.refresh(0, s.term.rows - 1);
-    setTimeout(() => fit(s), 40);
+    setTimeout(() => {
+      fit(s);
+      if (atBottom) s.term.scrollToBottom();
+      else s.term.scrollToLine(viewportY);
+    }, 40);
   }
   function applySettings() {
     applyMode();
-    e.theme.value = settings.theme;
+    if (e.theme) e.theme.value = settings.theme;
+    renderThemePicker();
     const preset = [...e.font.options].some(
       (option) =>
         option.value !== "custom" && option.value === settings.fontFamily,
@@ -547,9 +847,32 @@
     e.cursorBlink.checked = settings.cursorBlink;
     e.confirmPasteSetting.checked = settings.confirmMultilinePaste;
     e.autoCopy.checked = settings.autoCopySelection;
-    e.panel.style.width = settings.panelWidth + "px";
-    e.panel.style.flexBasis = settings.panelWidth + "px";
+    applyPanelLayout();
     sessions.forEach(applyTerminalSettings);
+  }
+  function applyPanelLayout() {
+    const collapsed = !!settings.panelCollapsed;
+    e.panel.classList.toggle("collapsed", collapsed);
+    if (collapsed) {
+      e.panel.style.width = e.panel.style.flexBasis = "40px";
+    } else {
+      e.panel.style.width = settings.panelWidth + "px";
+      e.panel.style.flexBasis = settings.panelWidth + "px";
+    }
+    if (e.resizer) e.resizer.classList.toggle("hidden", collapsed);
+  }
+  function setPanelCollapsed(collapsed) {
+    settings.panelCollapsed = !!collapsed;
+    saveSettings();
+    applyPanelLayout();
+    setTimeout(fitAll, 40);
+    if (!settings.panelCollapsed) {
+      const group = groups.get(activeGroupId);
+      if (group) renderMetrics(group);
+    }
+  }
+  function togglePanelCollapsed() {
+    setPanelCollapsed(!settings.panelCollapsed);
   }
   function readSettingsPreview() {
     settings.uiMode = e.ui.value;
@@ -567,6 +890,7 @@
   function openSettings() {
     settingsSnapshot = JSON.parse(JSON.stringify(settings));
     applySettings();
+    closeThemePicker();
     openModal(e.settingsModal);
   }
   function cancelSettings() {
@@ -604,7 +928,7 @@
     shown.forEach((c) => {
       const active = activeForCredential(c.id);
       const card = document.createElement("article");
-      card.className = "connection-card";
+      card.className = "connection-card" + (active ? " is-active" : "");
       card.innerHTML =
         '<div class="connection-card-head"><div><h3></h3><div class="connection-host"></div></div><span class="connection-badge"></span></div><dl><div><dt>' +
         t("port") +
@@ -764,12 +1088,41 @@
     if (s.socket?.readyState === WebSocket.OPEN)
       s.socket.send(JSON.stringify({ type, data }));
   }
+  function isTerminalAtBottom(term) {
+    try {
+      const buf = term.buffer.active;
+      // viewportY == baseY means the viewport is pinned to the bottom.
+      return buf.viewportY >= buf.baseY;
+    } catch (_) {
+      return true;
+    }
+  }
   function fit(s) {
     if (!s || s.pane?.offsetParent === null) return;
     try {
+      const prevCols = s.term.cols;
+      const prevRows = s.term.rows;
+      let viewportY = 0;
+      let atBottom = true;
+      try {
+        const buf = s.term.buffer.active;
+        viewportY = buf.viewportY;
+        atBottom = buf.viewportY >= buf.baseY;
+      } catch (_) {}
       s.fit.fit();
-      send(s, "resize", { cols: s.term.cols, rows: s.term.rows });
+      const changed = s.term.cols !== prevCols || s.term.rows !== prevRows;
+      if (changed) {
+        send(s, "resize", { cols: s.term.cols, rows: s.term.rows });
+        // Reflow/fit can jump the viewport; keep the user where they were.
+        if (atBottom) s.term.scrollToBottom();
+        else s.term.scrollToLine(viewportY);
+      }
     } catch (_) {}
+  }
+  function scheduleFit(s) {
+    if (!s) return;
+    clearTimeout(s.fitTimer);
+    s.fitTimer = setTimeout(() => fit(s), 50);
   }
   function fitAll() {
     sessions.forEach(fit);
@@ -831,11 +1184,14 @@
     const pane = document.createElement("div");
     pane.className = "terminal-pane";
     pane.dataset.paneId = id;
-    const badge = document.createElement("span");
-    badge.className = "pane-badge";
-    pane.appendChild(badge);
     const container = document.createElement("div");
     container.className = "terminal-container";
+    const initialTheme = terminalTheme();
+    container.style.setProperty("--terminal-background", initialTheme.background || "#1e1e2e");
+    container.style.setProperty("--terminal-foreground", initialTheme.foreground || "#cdd6f4");
+    container.style.background = initialTheme.background || "#1e1e2e";
+    pane.style.setProperty("--terminal-background", initialTheme.background || "#1e1e2e");
+    pane.style.background = initialTheme.background || "#1e1e2e";
     pane.appendChild(container);
     group.container.appendChild(pane);
     const term = new Terminal({
@@ -845,19 +1201,26 @@
         lineHeight: Number(settings.lineHeight),
         letterSpacing: 1,
         rescaleOverlappingGlyphs: true,
-        theme: { ...terminalTheme() },
+        theme: { ...initialTheme },
         scrollback: 5000,
         convertEol: false,
         allowProposedApi: true,
+        scrollOnUserInput: true,
       }),
       fitAddon = new FitAddon.FitAddon();
     term.loadAddon(fitAddon);
     term.open(container);
+    term.attachCustomKeyEventHandler((ev) => {
+      if (ev.type !== "keydown") return true;
+      for (const def of SHORTCUT_DEFS) {
+        if (matchesShortcut(def, ev)) return false;
+      }
+      return true;
+    });
     const s = {
       id,
       groupId: group.id,
       pane,
-      badge,
       credential: { ...group.credential },
       savedId: group.savedId,
       container,
@@ -880,7 +1243,8 @@
     term.onSelectionChange(() => {
       if (settings.autoCopySelection && term.hasSelection()) copySelection(s);
     });
-    s.observer = new ResizeObserver(() => fit(s));
+    s.fitTimer = null;
+    s.observer = new ResizeObserver(() => scheduleFit(s));
     s.observer.observe(container);
     pane.addEventListener("pointerdown", () => activatePane(id));
     pane.addEventListener("focusin", () => activatePane(id));
@@ -907,7 +1271,6 @@
       count === 2 ? group.orientation : "grid";
     group.container.style.setProperty("--pane-col", group.colRatio + "%");
     group.container.style.setProperty("--pane-row", group.rowRatio + "%");
-    group.panes.forEach((p, i) => (p.badge.textContent = String(i + 1)));
     group.tab.querySelector(".terminal-tab-panes").textContent =
       count > 1 ? "·" + count : "";
     installGroupSplitters(group);
@@ -1019,7 +1382,13 @@
         sendPing(s);
         clearInterval(s.pingTimer);
         s.pingTimer = setInterval(() => sendPing(s), 5000);
-      } else if (msg.type === "output") s.term.write(msg.data);
+      } else if (msg.type === "output") {
+        const atBottom = isTerminalAtBottom(s.term);
+        s.term.write(msg.data, () => {
+          // Keep follow-tail behavior for live CLI output without yanking scrolled-up views.
+          if (atBottom) s.term.scrollToBottom();
+        });
+      }
       else if (msg.type === "pong") {
         s.latency = Math.max(
           0,
@@ -1099,6 +1468,7 @@
   }
   function disposePane(s) {
     if (!s) return;
+    clearTimeout(s.fitTimer);
     disconnectSession(s);
     s.observer.disconnect();
     s.term.dispose();
@@ -1189,8 +1559,12 @@
     const group = groups.get(s.groupId);
     e.paneCount.textContent =
       group.panes.indexOf(s) + 1 + "/" + group.panes.length;
-    e.splitRight.disabled = e.splitDown.disabled = group.panes.length >= 4;
-    e.closePane.disabled = group.panes.length <= 1;
+    if (e.railStatusDot) {
+      e.railStatusDot.className = "rail-status-dot status-" + s.state;
+      e.railStatusDot.title = t(s.state);
+    }
+    if (e.railDisconnect) e.railDisconnect.disabled = e.sideDisconnect.disabled;
+    if (e.railReconnect) e.railReconnect.disabled = e.sideReconnect.disabled;
   }
   function hideContextMenu() {
     e.contextMenu.classList.add("hidden");
@@ -1201,6 +1575,7 @@
     ev.preventDefault();
     activatePane(s.id);
     contextSession = s;
+    updateShortcutLabels();
     const count = groups.get(s.groupId).panes.length;
     e.contextMenu.querySelector('[data-context-action="copy"]').disabled =
       !s.term.hasSelection();
@@ -1281,10 +1656,12 @@
   }
   function renderMetrics(group) {
     if (!group?.panes.length) return;
+    if (settings.panelCollapsed) return;
     const s = group.panes[0];
     e.metricTarget.textContent =
       s.credential.username + "@" + s.credential.host + ":" + s.credential.port;
     const m = group.metrics;
+    if (e.metricsWaiting) e.metricsWaiting.classList.toggle("hidden", !!m);
     if (!m) {
       resetMetricValues();
       renderLatency(group);
@@ -1306,6 +1683,7 @@
       (settings.language === "zh-CN" ? "小时" : "h");
   }
   function renderLatency(group) {
+    if (settings.panelCollapsed) return;
     e.metricLatency.textContent = Number.isFinite(group.latency)
       ? group.latency + " ms"
       : "—";
@@ -1350,7 +1728,7 @@
       startWidth = 0,
       raf = 0;
     e.resizer.addEventListener("pointerdown", (ev) => {
-      if (innerWidth <= 620) return;
+      if (innerWidth <= 620 || settings.panelCollapsed) return;
       dragging = true;
       startX = ev.clientX;
       startWidth = e.panel.getBoundingClientRect().width;
@@ -1454,62 +1832,162 @@
   });
   e.settingsBtn.addEventListener("click", openSettings);
   e.settingsConfirm.addEventListener("click", confirmSettings);
-  document
-    .querySelectorAll("[data-close-modal]")
-    .forEach((n) =>
-      n.addEventListener("click", () =>
-        n.dataset.closeModal === "settings"
-          ? cancelSettings()
-          : closeModal(
-              n.dataset.closeModal === "connection"
-                ? e.connectionModal
-                : e.pasteModal,
-            ),
-      ),
+  document.querySelectorAll("[data-close-modal]").forEach((n) =>
+    n.addEventListener("click", () => {
+      const which = n.dataset.closeModal;
+      if (which === "settings") cancelSettings();
+      else if (which === "connection") closeModal(e.connectionModal);
+      else if (which === "paste") closeModal(e.pasteModal);
+      else if (which === "shortcuts") closeModal(e.shortcutsModal);
+    }),
+  );
+  function anyModalOpen() {
+    return (
+      !e.settingsModal.classList.contains("hidden") ||
+      !e.connectionModal.classList.contains("hidden") ||
+      !e.pasteModal.classList.contains("hidden") ||
+      !e.shortcutsModal.classList.contains("hidden")
     );
+  }
+  function focusInEditable(target) {
+    if (!target || !(target instanceof Element)) return false;
+    // xterm focuses a helper textarea; app shortcuts must still work there.
+    if (target.closest(".xterm") || target.classList.contains("xterm-helper-textarea"))
+      return false;
+    const tag = target.tagName;
+    return (
+      target.isContentEditable ||
+      tag === "INPUT" ||
+      tag === "TEXTAREA" ||
+      tag === "SELECT"
+    );
+  }
+  function matchesShortcut(def, ev) {
+    try {
+      return !!def?.match?.(ev);
+    } catch (_) {
+      return false;
+    }
+  }
+  function cyclePane(delta) {
+    const group = groups.get(activeGroupId);
+    if (!group || group.panes.length < 2) return;
+    const idx = group.panes.findIndex((p) => p.id === activeId);
+    if (idx < 0) return;
+    const next = group.panes[(idx + delta + group.panes.length) % group.panes.length];
+    activatePane(next.id);
+  }
+  function updateShortcutLabels() {
+    document.querySelectorAll("[data-shortcut]").forEach((node) => {
+      node.innerHTML = renderKeyCaps(shortcutKeys(node.dataset.shortcut));
+    });
+  }
+  function renderShortcutsList() {
+    if (!e.shortcutsList) return;
+    const body = e.shortcutsList.tBodies?.[0] || e.shortcutsList;
+    body.innerHTML = "";
+    SHORTCUT_DEFS.forEach((def) => {
+      const row = document.createElement("tr");
+      row.className = "shortcut-row";
+      const action = document.createElement("td");
+      action.className = "shortcut-action";
+      action.textContent = t(def.labelKey);
+      const keys = document.createElement("td");
+      keys.className = "shortcut-keys";
+      keys.innerHTML = renderKeyCaps(IS_MAC ? def.keys.mac : def.keys.win);
+      row.append(action, keys);
+      body.appendChild(row);
+    });
+  }
+  function openShortcuts() {
+    renderShortcutsList();
+    openModal(e.shortcutsModal);
+  }
   document.addEventListener("keydown", (ev) => {
     if (ev.key === "Escape") {
       closeModal(e.connectionModal);
       if (!e.settingsModal.classList.contains("hidden")) cancelSettings();
       closeModal(e.pasteModal);
+      closeModal(e.shortcutsModal);
+      closeThemePicker();
+      closeLangMenus();
       hideContextMenu();
     }
   });
   window.addEventListener(
     "keydown",
     (ev) => {
-      if (
-        currentPage !== "terminal" ||
-        !e.settingsModal.classList.contains("hidden") ||
-        !e.pasteModal.classList.contains("hidden")
-      )
+      if (ev.key === "Escape") return;
+      if (anyModalOpen()) return;
+      // Block only real form fields, not xterm helper textarea.
+      if (focusInEditable(ev.target) && !ev.target.closest?.(".xterm")) return;
+
+      const toggleDef = SHORTCUT_DEFS.find((d) => d.id === "togglePanel");
+      if (matchesShortcut(toggleDef, ev)) {
+        if (currentPage === "terminal") {
+          ev.preventDefault();
+          ev.stopImmediatePropagation();
+          togglePanelCollapsed();
+        }
         return;
+      }
+
+      if (currentPage !== "terminal") return;
       const s = sessions.get(activeId);
       if (!s) return;
-      const mac = navigator.platform.includes("Mac");
-      const copyKey = mac
-        ? ev.metaKey && ev.code === "KeyC"
-        : ev.ctrlKey && ev.shiftKey && ev.code === "KeyC";
-      const pasteKey = mac
-        ? ev.metaKey && ev.code === "KeyV"
-        : ev.ctrlKey && ev.shiftKey && ev.code === "KeyV";
-      if (!copyKey && !pasteKey && !(ev.shiftKey && ev.code === "Insert"))
+
+      const copyDef = SHORTCUT_DEFS.find((d) => d.id === "copy");
+      const pasteDef = SHORTCUT_DEFS.find((d) => d.id === "paste");
+      const copyKey = matchesShortcut(copyDef, ev);
+      const pasteKey =
+        matchesShortcut(pasteDef, ev) ||
+        (ev.shiftKey &&
+          !ev.ctrlKey &&
+          !ev.metaKey &&
+          !ev.altKey &&
+          ev.code === "Insert");
+      if (copyKey || pasteKey) {
+        ev.preventDefault();
+        ev.stopImmediatePropagation();
+        if (copyKey) copySelection(s);
+        else pasteFromClipboard(s);
         return;
-      ev.preventDefault();
-      ev.stopImmediatePropagation();
-      if (copyKey) copySelection(s);
-      else pasteFromClipboard(s);
+      }
+
+      for (const def of SHORTCUT_DEFS) {
+        if (def.contextOnly || def.id === "togglePanel") continue;
+        if (!matchesShortcut(def, ev)) continue;
+        ev.preventDefault();
+        ev.stopImmediatePropagation();
+        if (def.id === "splitRight") splitActive("right");
+        else if (def.id === "splitDown") splitActive("down");
+        else if (def.id === "closePane") {
+          const group = groups.get(s.groupId);
+          if (group?.panes.length > 1) removeSession(s.id);
+        } else if (def.id === "nextPane") cyclePane(1);
+        else if (def.id === "prevPane") cyclePane(-1);
+        return;
+      }
     },
     true,
   );
-  [e.langLogin, e.langWorkspace].forEach((n) =>
-    n.addEventListener("change", () => {
-      settings.language = n.value;
-      saveSettings();
-      applyLanguage();
-      applyMode();
-    }),
-  );
+  e.langLogin?.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    toggleLangMenu("login");
+  });
+  e.langWorkspace?.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    toggleLangMenu("workspace");
+  });
+  document.querySelectorAll(".lang-menu [data-lang]").forEach((btn) => {
+    btn.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      setLanguage(btn.dataset.lang);
+    });
+  });
+  document.addEventListener("click", (ev) => {
+    if (!ev.target.closest(".lang-menu-wrap")) closeLangMenus();
+  });
   [e.modeLogin, e.modeWorkspace].forEach((n) =>
     n.addEventListener("click", toggleMode),
   );
@@ -1526,6 +2004,7 @@
   });
   function settingsChanged() {
     readSettingsPreview();
+    renderThemePicker();
   }
   function normalizeFontStack(value) {
     const generic = new Set(["monospace", "serif", "sans-serif", "system-ui"]);
@@ -1546,26 +2025,35 @@
     else settingsChanged();
   });
   e.customFont.addEventListener("input", settingsChanged);
-  [
-    e.theme,
-    e.fontSize,
-    e.lineHeight,
-    e.cursorBlink,
-    e.confirmPasteSetting,
-    e.autoCopy,
-  ].forEach((n) => n.addEventListener("change", settingsChanged));
-  e.sideDisconnect.addEventListener("click", () =>
-    disconnectSession(sessions.get(activeId)),
+  [e.fontSize, e.lineHeight, e.cursorBlink, e.confirmPasteSetting, e.autoCopy].forEach(
+    (n) => n.addEventListener("change", settingsChanged),
   );
-  e.sideReconnect.addEventListener("click", () =>
-    reconnectSession(sessions.get(activeId)),
-  );
-  e.splitRight.addEventListener("click", () => splitActive("right"));
-  e.splitDown.addEventListener("click", () => splitActive("down"));
-  e.closePane.addEventListener("click", () => {
-    const group = groups.get(activeGroupId);
-    if (group?.panes.length > 1) removeSession(activeId);
+  if (e.themePickerBtn)
+    e.themePickerBtn.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      toggleThemePicker();
+    });
+  document.addEventListener("click", (ev) => {
+    if (!ev.target.closest("#theme-picker")) closeThemePicker();
   });
+  function activeSessionDisconnect() {
+    disconnectSession(sessions.get(activeId));
+  }
+  function activeSessionReconnect() {
+    reconnectSession(sessions.get(activeId));
+  }
+  e.sideDisconnect.addEventListener("click", activeSessionDisconnect);
+  e.sideReconnect.addEventListener("click", activeSessionReconnect);
+  if (e.railDisconnect)
+    e.railDisconnect.addEventListener("click", activeSessionDisconnect);
+  if (e.railReconnect)
+    e.railReconnect.addEventListener("click", activeSessionReconnect);
+  if (e.panelCollapseBtn)
+    e.panelCollapseBtn.addEventListener("click", () => setPanelCollapsed(true));
+  if (e.panelExpandBtn)
+    e.panelExpandBtn.addEventListener("click", () => setPanelCollapsed(false));
+  if (e.shortcutsBtn) e.shortcutsBtn.addEventListener("click", openShortcuts);
   e.contextMenu
     .querySelectorAll("[data-context-action]")
     .forEach((n) =>
@@ -1592,6 +2080,8 @@
     populateThemes();
     applySettings();
     applyLanguage();
+    updateShortcutLabels();
+    renderShortcutsList();
     if (uiConfig.hostKeyPolicy === "insecure-ignore")
       e.hostWarning.classList.remove("hidden");
     if (session?.authenticated) {

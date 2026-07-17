@@ -21,7 +21,7 @@ import (
 	"github.com/liansishen/go-webssh/web"
 )
 
-var version = "0.5.7"
+var version = "0.5.8"
 
 func main() {
 	var (

@@ -6,20 +6,29 @@
     <title>Go WebSSH</title>
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="/vendor/xterm.css" />
-    <link rel="stylesheet" href="/style.css?v=0.5.7" />
+    <link rel="stylesheet" href="/style.css?v=0.5.8" />
   </head>
   <body>
     <div id="app">
       <section id="view-login" class="view hidden login-view">
         <div class="page-quick-controls">
-          <select
-            id="language-login"
-            class="compact-select"
-            aria-label="Language"
-          >
-            <option value="en">English</option>
-            <option value="zh-CN">简体中文</option>
-          </select>
+          <div class="lang-menu-wrap">
+            <button
+              type="button"
+              id="language-login"
+              class="icon-btn lang-btn"
+              data-i18n-title="language"
+              aria-label="Language"
+              aria-haspopup="menu"
+              aria-expanded="false"
+            >
+              <svg class="lang-icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false"><path fill="currentColor" d="M12.87 15.07l-2.54-2.51.03-.03A17.5 17.5 0 0 0 14.07 6H17V4h-7V2H8v2H1v2h11.17C11.5 7.92 10.44 9.75 9 11.35 8.07 10.32 7.3 9.19 6.69 8h-2c.73 1.63 1.73 3.17 2.98 4.56l-5.09 5.02L4 19l5-5 3.11 3.11.76-2.04zM18.5 10h-2L12 22h2l1.12-3h4.75L21 22h2l-4.5-12zm-2.62 7l1.62-4.33L19.12 17h-3.24z"/></svg>
+            </button>
+            <div id="lang-menu-login" class="lang-menu hidden" role="menu">
+              <button type="button" role="menuitem" data-lang="en">English</button>
+              <button type="button" role="menuitem" data-lang="zh-CN">简体中文</button>
+            </div>
+          </div>
           <button
             type="button"
             id="mode-login"
@@ -90,14 +99,23 @@
           </button>
         </nav>
         <div class="topbar-actions workspace-actions">
-          <select
-            id="language-workspace"
-            class="compact-select"
-            aria-label="Language"
-          >
-            <option value="en">English</option>
-            <option value="zh-CN">简体中文</option>
-          </select>
+          <div class="lang-menu-wrap">
+            <button
+              type="button"
+              id="language-workspace"
+              class="icon-btn lang-btn"
+              data-i18n-title="language"
+              aria-label="Language"
+              aria-haspopup="menu"
+              aria-expanded="false"
+            >
+              <svg class="lang-icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false"><path fill="currentColor" d="M12.87 15.07l-2.54-2.51.03-.03A17.5 17.5 0 0 0 14.07 6H17V4h-7V2H8v2H1v2h11.17C11.5 7.92 10.44 9.75 9 11.35 8.07 10.32 7.3 9.19 6.69 8h-2c.73 1.63 1.73 3.17 2.98 4.56l-5.09 5.02L4 19l5-5 3.11 3.11.76-2.04zM18.5 10h-2L12 22h2l1.12-3h4.75L21 22h2l-4.5-12zm-2.62 7l1.62-4.33L19.12 17h-3.24z"/></svg>
+            </button>
+            <div id="lang-menu-workspace" class="lang-menu hidden" role="menu">
+              <button type="button" role="menuitem" data-lang="en">English</button>
+              <button type="button" role="menuitem" data-lang="zh-CN">简体中文</button>
+            </div>
+          </div>
           <button
             type="button"
             id="mode-workspace"
@@ -105,6 +123,15 @@
             aria-label="Toggle color mode"
           >
             ☀
+          </button>
+          <button
+            type="button"
+            id="shortcuts-btn"
+            class="icon-btn"
+            data-i18n-title="shortcuts"
+            aria-label="Keyboard shortcuts"
+          >
+            ⌨
           </button>
           <button
             type="button"
@@ -179,61 +206,122 @@
       <section id="view-terminal" class="view hidden terminal-view">
         <div class="workspace-body">
           <aside id="metrics-panel" class="metrics-panel">
-            <h3 data-i18n="server">Server</h3>
-            <div id="metric-target" class="metric-target">—</div>
-            <div class="sidebar-status-row">
-              <span data-i18n="status">Status</span
-              ><strong id="sidebar-status" class="status status-disconnected"
-                >—</strong
-              >
-            </div>
-            <div class="connection-actions">
+            <div class="panel-rail" aria-hidden="true">
               <button
-                id="sidebar-disconnect"
-                class="btn danger"
-                data-i18n="disconnect"
+                type="button"
+                id="panel-expand-btn"
+                class="icon-btn rail-btn"
+                data-i18n-title="expandPanel"
+                aria-label="Expand panel"
               >
-                Disconnect</button
-              ><button
-                id="sidebar-reconnect"
-                class="btn ghost"
-                data-i18n="reconnect"
+                »
+              </button>
+              <span
+                id="rail-status-dot"
+                class="rail-status-dot status-disconnected"
+                title="Status"
+              ></span>
+              <button
+                type="button"
+                id="rail-disconnect"
+                class="icon-btn rail-btn rail-danger"
+                data-i18n-title="disconnect"
+                aria-label="Disconnect"
               >
-                Reconnect
+                ✕
+              </button>
+              <button
+                type="button"
+                id="rail-reconnect"
+                class="icon-btn rail-btn"
+                data-i18n-title="reconnect"
+                aria-label="Reconnect"
+              >
+                ↻
               </button>
             </div>
-            <div class="metric">
-              <span>CPU</span><strong id="metric-cpu">—</strong>
-            </div>
-            <div class="meter"><i id="metric-cpu-bar"></i></div>
-            <div class="metric">
-              <span data-i18n="memory">Memory</span
-              ><strong id="metric-memory">—</strong>
-            </div>
-            <div class="meter"><i id="metric-memory-bar"></i></div>
-            <div class="metric">
-              <span data-i18n="networkDown">Network ↓</span
-              ><strong id="metric-rx">—</strong>
-            </div>
-            <div class="metric">
-              <span data-i18n="networkUp">Network ↑</span
-              ><strong id="metric-tx">—</strong>
-            </div>
-            <div class="metric">
-              <span data-i18n="load">Load</span
-              ><strong id="metric-load">—</strong>
-            </div>
-            <div class="metric">
-              <span data-i18n="uptime">Uptime</span
-              ><strong id="metric-uptime">—</strong>
-            </div>
-            <div class="metric">
-              <span data-i18n="latency">Latency</span
-              ><strong id="metric-latency">—</strong>
-            </div>
-            <div class="metric">
-              <span data-i18n="pane">Pane</span
-              ><strong id="pane-count">—</strong>
+            <div class="panel-body">
+              <div class="panel-head">
+                <h3 data-i18n="server">Server</h3>
+                <button
+                  type="button"
+                  id="panel-collapse-btn"
+                  class="icon-btn rail-btn"
+                  data-i18n-title="collapsePanel"
+                  aria-label="Collapse panel"
+                >
+                  «
+                </button>
+              </div>
+              <div id="metric-target" class="metric-target">—</div>
+              <div class="sidebar-status-row">
+                <span data-i18n="status">Status</span
+                ><strong id="sidebar-status" class="status status-disconnected"
+                  >—</strong
+                >
+              </div>
+              <div class="connection-actions">
+                <button
+                  id="sidebar-disconnect"
+                  class="btn danger"
+                  data-i18n="disconnect"
+                >
+                  Disconnect</button
+                ><button
+                  id="sidebar-reconnect"
+                  class="btn ghost"
+                  data-i18n="reconnect"
+                >
+                  Reconnect
+                </button>
+              </div>
+              <div class="metrics-section">
+                <div class="metrics-section-title" data-i18n="resourceMetrics">
+                  Resources
+                </div>
+                <div
+                  id="metrics-waiting"
+                  class="metrics-waiting muted"
+                  data-i18n="noMetrics"
+                >
+                  Waiting for server metrics
+                </div>
+                <div id="metrics-values" class="metrics-values">
+                  <div class="metric">
+                    <span>CPU</span><strong id="metric-cpu">—</strong>
+                  </div>
+                  <div class="meter"><i id="metric-cpu-bar"></i></div>
+                  <div class="metric">
+                    <span data-i18n="memory">Memory</span
+                    ><strong id="metric-memory">—</strong>
+                  </div>
+                  <div class="meter"><i id="metric-memory-bar"></i></div>
+                  <div class="metric">
+                    <span data-i18n="networkDown">Network ↓</span
+                    ><strong id="metric-rx">—</strong>
+                  </div>
+                  <div class="metric">
+                    <span data-i18n="networkUp">Network ↑</span
+                    ><strong id="metric-tx">—</strong>
+                  </div>
+                  <div class="metric">
+                    <span data-i18n="load">Load</span
+                    ><strong id="metric-load">—</strong>
+                  </div>
+                  <div class="metric">
+                    <span data-i18n="uptime">Uptime</span
+                    ><strong id="metric-uptime">—</strong>
+                  </div>
+                  <div class="metric">
+                    <span data-i18n="latency">Latency</span
+                    ><strong id="metric-latency">—</strong>
+                  </div>
+                  <div class="metric">
+                    <span data-i18n="pane">Pane</span
+                    ><strong id="pane-count">—</strong>
+                  </div>
+                </div>
+              </div>
             </div>
           </aside>
           <div
@@ -244,34 +332,6 @@
             tabindex="0"
           ></div>
           <div class="terminal-area">
-            <div class="pane-toolbar">
-              <button
-                type="button"
-                id="split-right-btn"
-                class="btn ghost"
-                data-i18n-title="splitRight"
-                data-i18n="splitRight"
-              >
-                Split right
-              </button>
-              <button
-                type="button"
-                id="split-down-btn"
-                class="btn ghost"
-                data-i18n-title="splitDown"
-                data-i18n="splitDown"
-              >
-                Split down
-              </button>
-              <button
-                type="button"
-                id="close-pane-btn"
-                class="btn ghost"
-                data-i18n="closePane"
-              >
-                Close pane
-              </button>
-            </div>
             <main id="terminal-stack" class="terminal-stack"></main>
           </div>
         </div>
@@ -291,55 +351,75 @@
     </div>
 
     <div id="terminal-context-menu" class="context-menu hidden" role="menu">
-      <button type="button" data-context-action="copy" data-i18n="copy">
-        Copy
+      <button type="button" data-context-action="copy">
+        <span data-i18n="copy">Copy</span><kbd data-shortcut="copy"></kbd>
       </button>
-      <button type="button" data-context-action="paste" data-i18n="paste">
-        Paste
+      <button type="button" data-context-action="paste">
+        <span data-i18n="paste">Paste</span><kbd data-shortcut="paste"></kbd>
       </button>
-      <button
-        type="button"
-        data-context-action="select-all"
-        data-i18n="selectAll"
-      >
-        Select all
+      <button type="button" data-context-action="select-all">
+        <span data-i18n="selectAll">Select all</span>
       </button>
-      <button
-        type="button"
-        data-context-action="clear"
-        data-i18n="clearTerminal"
-      >
-        Clear terminal
+      <button type="button" data-context-action="clear">
+        <span data-i18n="clearTerminal">Clear terminal</span>
       </button>
       <hr />
-      <button
-        type="button"
-        data-context-action="split-right"
-        data-i18n="splitRight"
-      >
-        Split right
+      <button type="button" data-context-action="split-right">
+        <span data-i18n="splitRight">Split right</span
+        ><kbd data-shortcut="splitRight"></kbd>
       </button>
-      <button
-        type="button"
-        data-context-action="split-down"
-        data-i18n="splitDown"
-      >
-        Split down
+      <button type="button" data-context-action="split-down">
+        <span data-i18n="splitDown">Split down</span
+        ><kbd data-shortcut="splitDown"></kbd>
       </button>
-      <button
-        type="button"
-        data-context-action="close-pane"
-        data-i18n="closePane"
-      >
-        Close pane
+      <button type="button" data-context-action="close-pane">
+        <span data-i18n="closePane">Close pane</span
+        ><kbd data-shortcut="closePane"></kbd>
       </button>
-      <button
-        type="button"
-        data-context-action="close-other-panes"
-        data-i18n="closeOtherPanes"
-      >
-        Close other panes
+      <button type="button" data-context-action="close-other-panes">
+        <span data-i18n="closeOtherPanes">Close other panes</span>
       </button>
+    </div>
+
+    <div
+      id="shortcuts-modal"
+      class="modal hidden"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="shortcuts-modal-title"
+    >
+      <div class="modal-backdrop" data-close-modal="shortcuts"></div>
+      <div class="modal-window shortcuts-modal-window">
+        <header class="modal-header">
+          <h2 id="shortcuts-modal-title" data-i18n="shortcuts">
+            Keyboard shortcuts
+          </h2>
+          <button
+            type="button"
+            class="icon-btn"
+            data-close-modal="shortcuts"
+            aria-label="Close"
+          >
+            ×
+          </button>
+        </header>
+        <div class="modal-body">
+          <p class="muted" data-i18n="shortcutsReadonlyHint">
+            Shortcuts are read-only in this version.
+          </p>
+          <table id="shortcuts-list" class="shortcuts-table"><tbody></tbody></table>
+        </div>
+        <footer class="modal-footer">
+          <button
+            type="button"
+            class="btn primary auto-width"
+            data-close-modal="shortcuts"
+            data-i18n="done"
+          >
+            Done
+          </button>
+        </footer>
+      </div>
     </div>
 
     <div
@@ -562,9 +642,27 @@
               <option value="light" data-i18n="light">Light</option>
             </select></label
           >
-          <label
+          <label class="theme-field"
             ><span data-i18n="terminalTheme">Terminal theme</span
-            ><select id="setting-theme"></select
+            ><div class="theme-picker" id="theme-picker">
+              <button
+                type="button"
+                id="theme-picker-btn"
+                class="theme-picker-btn"
+                aria-haspopup="listbox"
+                aria-expanded="false"
+              >
+                <span class="theme-swatches" id="theme-picker-swatches"></span>
+                <span class="theme-picker-label" id="theme-picker-label"></span>
+                <span class="theme-picker-caret">▾</span>
+              </button>
+              <div
+                id="theme-picker-menu"
+                class="theme-picker-menu hidden"
+                role="listbox"
+              ></div>
+            </div>
+            <select id="setting-theme" class="sr-only" tabindex="-1" aria-hidden="true"></select
           ></label>
           <label
             ><span data-i18n="font">Font</span
@@ -650,7 +748,7 @@
 
     <script src="/vendor/xterm.js"></script>
     <script src="/vendor/xterm-addon-fit.js"></script>
-    <script src="/themes.js?v=0.5.7"></script>
-    <script src="/app.js?v=0.5.7"></script>
+    <script src="/themes.js?v=0.5.8"></script>
+    <script src="/app.js?v=0.5.8"></script>
   </body>
 </html>
