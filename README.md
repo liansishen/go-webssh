@@ -1,6 +1,6 @@
 # Go WebSSH
 
-轻量 WebSSH 服务：用浏览器通过 **Go + xterm.js** 连接多台 SSH 目标主机。单个 Go 进程处理 Web UI 与全部 SSH 会话，无需为每台目标服务器启动独立 ttyd/进程。
+轻量 WebSSH 服务：用浏览器通过 **Go + xterm.js** 连接多台 SSH 主机。单个 Go 进程同时提供 Web UI 与全部 SSH 会话，无需为每台目标单独启动 ttyd。
 
 ## 安全声明（必读）
 
@@ -11,46 +11,51 @@
 ```
 
 - **私钥会发送到 WebSSH 服务端内存**，用于 SSH 握手与认证。
-- **默认不会**把私钥/passphrase 保存到磁盘、数据库、日志或浏览器 `localStorage`/`sessionStorage`。
-- 请只在你信任的 WebSSH 部署上使用私钥；生产环境务必 HTTPS。
+- 未明确保存时，私钥**不会**写入磁盘、数据库、日志或浏览器 `localStorage` / `sessionStorage`。
+- 若启用加密凭据库并主动保存连接，私钥会以 AES-256-GCM 加密后存入本地数据库（见下文）。
+- 请只在你信任的部署上使用私钥；生产环境务必 HTTPS。
 - 建议使用专用 SSH key，并在目标机 `authorized_keys` 中限制来源 IP。
 
-## 功能（MVP）
+## 功能
 
-- 单用户 Web 登录（bcrypt `password_hash` 或开发用明文 `password`）
-- 登录页可选择保持登录状态 30 天；会话使用浏览器中的加密认证 Cookie，服务重启后仍有效；用户名下拉菜单提供退出登录操作
+### 连接与终端
+
+- 单用户 Web 登录（bcrypt `password_hash`，开发可用明文 `password`）
+- 可选保持登录 30 天（加密 Cookie，服务重启后仍有效）
 - 私钥登录（ed25519 / RSA / ECDSA，支持 passphrase）
 - WebSocket 交互式终端（xterm.js + fit）
-- 终端 resize、主题/字体/字号等 UI 设置（localStorage）
-- 从本地 `themes/` 目录加载终端主题（内置默认主题可复制为模板，支持热加载新增）
-- 主题选择器显示色块预览与美化名称（如下拉中的 `Catppuccin Mocha`）
-- Host Key：`known-hosts`（默认）或显式 `insecure-ignore`
-- Network Policy：默认拒绝 loopback / link-local / metadata / 私网（可配置）
-- 前端资源 `embed` 进单二进制
-- AES-256-GCM 加密凭据库（密钥由登录密码经 Argon2id 派生）
-- 应用内多连接标签页；每个标签最多包含 4 个独立 SSH 窗格
-- 网络中断最多自动重连 5 次；启用 tmux 时恢复原远端终端
-- Linux 服务器 CPU、内存、网络、负载、运行时间和 WebSocket 往返延迟实时监控
-- 监控侧栏可折叠为窄轨；折叠时不刷新监控 DOM，窄轨提供断开/重连图标与状态点
-- 登录后主页统一管理保存的连接，连接和终端设置使用模态窗口
-- English/简体中文通过语言图标下拉切换；日间/夜间快捷按钮
-- 只读快捷键面板（顶栏键盘图标）；分屏/关窗格/切窗格/折叠侧栏等快捷键
-- 终端支持自定义多个本机字体名称，并遵循 CSS fallback 顺序
-- 每个服务器标签支持最多 4 个独立 SSH 窗格，可向右/向下分屏、四宫格显示并拖动分隔线
-- 终端右键自定义菜单（含快捷键提示），提供复制、粘贴、全选、清屏、分屏和窗格关闭
-- 支持 `Ctrl+Shift+C/V`（macOS 为 `Cmd+C/V`）复制粘贴，多行或控制字符粘贴可安全确认
+- 多连接标签；每个标签最多 4 个 SSH 窗格，支持向右/向下分屏与拖动分隔线
+- 断线自动重连最多 5 次；可选 tmux 恢复远端会话
+- 右键菜单：复制、粘贴、全选、清屏、分屏、关闭窗格（含快捷键提示）
+- 安全粘贴确认（多行 / 控制字符）；`Ctrl+Shift+C/V`（macOS：`Cmd+C/V`）
+
+### 界面与主题
+
+- 中英文切换、日间/夜间模式
+- 终端主题、字体、字号、行高等设置（localStorage）
+- 主题可从本地目录加载；设置页提供色块预览与可读名称
+- 监控侧栏可折叠为窄轨；折叠时暂停刷新监控数据
+- 只读快捷键面板（顶栏键盘图标）
+
+### 安全与运维
+
+- Host Key：`known-hosts`（默认）或 `insecure-ignore`
+- Network Policy：默认拒绝 loopback、link-local、metadata、私网（可配置）
+- 可选 AES-256-GCM 加密凭据库（登录密码 + Argon2id 派生密钥）
+- 前端资源嵌入单二进制
+- Linux 目标机 CPU / 内存 / 网络 / 负载 / 运行时间与 WebSocket 延迟监控
 
 ## 快速启动
 
 ### Linux 一键安装
 
-公开仓库可直接运行：
+公开仓库：
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/liansishen/go-webssh/main/install.sh | sudo bash
 ```
 
-当前仓库为私有仓库时，先提供具有仓库读取权限的 Token：
+私有仓库需提供可读 Token：
 
 ```bash
 export GITHUB_TOKEN='your-token'
@@ -60,9 +65,9 @@ curl -fsSL \
   sudo -E bash
 ```
 
-脚本支持 Linux amd64/arm64，会校验 Release 的 SHA256，安装到 `/usr/local/bin`，生成 `/etc/go-webssh/config.yaml` 并启用 systemd 服务。重复执行会升级二进制并保留已有配置。
+脚本支持 Linux amd64/arm64，校验 Release SHA256，安装二进制、生成配置并启用 systemd。重复执行会升级二进制并保留已有配置。
 
-可在安装前通过环境变量覆盖默认值：
+可选环境变量：
 
 ```bash
 GOWEBSSH_VERSION=v0.5.8 \
@@ -82,7 +87,7 @@ go build -o go-webssh ./cmd/webssh
 export GOWEBSSH_USERNAME=admin
 export GOWEBSSH_PASSWORD='strong-password'
 export GOWEBSSH_SESSION_SECRET='change-me-random-32bytes'
-# 开发调试可跳过 host key（生产请用 known-hosts）
+# 开发可跳过 host key；生产请使用 known-hosts
 export GOWEBSSH_HOST_KEY_POLICY=insecure-ignore
 
 ./go-webssh --listen 127.0.0.1:8080
@@ -90,16 +95,14 @@ export GOWEBSSH_HOST_KEY_POLICY=insecure-ignore
 
 浏览器访问：`http://127.0.0.1:8080/`
 
-健康检查：
-
 ```bash
 curl -s http://127.0.0.1:8080/api/healthz
 # {"ok":true}
 ```
 
-## 配置文件示例
+## 配置
 
-见 [config.example.yaml](./config.example.yaml)。
+示例见 [config.example.yaml](./config.example.yaml)。
 
 ```yaml
 server:
@@ -138,8 +141,6 @@ ui:
   themes_dir: "./themes"
 ```
 
-启动：
-
 ```bash
 ./go-webssh --config config.yaml --listen 127.0.0.1:8080
 ```
@@ -156,59 +157,55 @@ ui:
 |---|---|
 | `GOWEBSSH_LISTEN` | 监听地址 |
 | `GOWEBSSH_USERNAME` | Web 登录用户名 |
-| `GOWEBSSH_PASSWORD` | Web 登录明文密码（仅建议开发） |
+| `GOWEBSSH_PASSWORD` | 明文密码（仅建议开发） |
 | `GOWEBSSH_PASSWORD_HASH` | bcrypt 密码哈希 |
-| `GOWEBSSH_SESSION_SECRET` | Session 相关密钥（至少 16 字符） |
+| `GOWEBSSH_SESSION_SECRET` | Session 密钥（至少 16 字符） |
 | `GOWEBSSH_HOST_KEY_POLICY` | `known-hosts` / `insecure-ignore` |
 | `GOWEBSSH_KNOWN_HOSTS_FILE` | known_hosts 路径 |
 | `GOWEBSSH_ALLOW_PRIVATE_RANGES` | `true` 允许 RFC1918 等私网 |
 | `GOWEBSSH_SECURE_COOKIE` | `true` 设置 Secure cookie |
-| `GOWEBSSH_LOG_LEVEL` | `debug`/`info`/`warn`/`error` |
+| `GOWEBSSH_LOG_LEVEL` | `debug` / `info` / `warn` / `error` |
 | `GOWEBSSH_THEMES_DIR` | 终端主题 JSON 目录（默认 `./themes`） |
 
 ## 生成 bcrypt password_hash
 
 ```bash
-# 在项目目录执行
 cat > /tmp/gowebssh-hash.go <<'EOF'
 package main
 
 import (
-\t"fmt"
-\t"os"
+	"fmt"
+	"os"
 
-\t"golang.org/x/crypto/bcrypt"
+	"golang.org/x/crypto/bcrypt"
 )
 
 func main() {
-\th, err := bcrypt.GenerateFromPassword([]byte(os.Args[1]), 12)
-\tif err != nil {
-\t\tpanic(err)
-\t}
-\tfmt.Println(string(h))
+	h, err := bcrypt.GenerateFromPassword([]byte(os.Args[1]), 12)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(string(h))
 }
 EOF
 
-cd /path/to/go-webssh
 go run /tmp/gowebssh-hash.go 'your-password'
 ```
 
-将输出写入配置的 `auth.password_hash`，并删除明文 `password`。
+将输出写入 `auth.password_hash`，并删除明文 `password`。
 
 ## Host Key 策略
 
 | 策略 | 行为 |
 |---|---|
-| `known-hosts`（默认） | 使用 `known_hosts_file` 校验。未知/变更的 host key 会拒绝连接。若文件不存在，服务会创建空文件并拒绝未知主机。 |
-| `insecure-ignore` | **跳过校验**。启动日志与 UI 都会显示明显警告。存在中间人风险。 |
+| `known-hosts`（默认） | 使用 `known_hosts_file` 校验；未知或变更的 host key 会拒绝连接 |
+| `insecure-ignore` | 跳过校验；启动日志与 UI 会显示警告，存在中间人风险 |
 
 生产建议：
 
 ```bash
 ssh-keyscan -H example.com >> known_hosts
 ```
-
-并设置：
 
 ```yaml
 ssh:
@@ -218,54 +215,99 @@ ssh:
 
 ## Network Policy
 
-默认保护，避免把 WebSSH 变成内网扫描 / SSRF 跳板：
+默认避免把 WebSSH 变成内网扫描或 SSRF 跳板：
 
-- 禁止 `localhost` / `127.0.0.0/8` / `::1`
-- 禁止 `0.0.0.0/8`
-- 禁止 `169.254.0.0/16`（含云 metadata `169.254.169.254`）
-- 默认禁止私网（`10/8`、`172.16/12`、`192.168/16`、`fc00::/7`、`fe80::/10`）
-- 域名会解析，**任一**解析结果命中拒绝列表则拒绝
+- 拒绝 `localhost` / `127.0.0.0/8` / `::1`
+- 拒绝 `0.0.0.0/8`
+- 拒绝 `169.254.0.0/16`（含云 metadata `169.254.169.254`）
+- 默认拒绝私网（`10/8`、`172.16/12`、`192.168/16`、`fc00::/7`、`fe80::/10`）
+- 域名会解析；**任一**解析结果命中拒绝列表即拒绝
 
-若需要连接内网目标：
+连接内网目标：
 
 ```yaml
 network_policy:
   allow_private_ranges: true
 ```
 
-或环境变量：`GOWEBSSH_ALLOW_PRIVATE_RANGES=true`。
+或：`GOWEBSSH_ALLOW_PRIVATE_RANGES=true`。
 
-注意：即使允许私网，**loopback 与 link-local/metadata 仍默认拒绝**。如需例外，可在配置中使用 `allow` 前缀列表（allow 优先于 deny）。
+即使允许私网，loopback 与 link-local/metadata 仍默认拒绝。确有需要时，用 `network_policy.allow` 显式放行。
 
-## 私钥默认不会被保存
+## 私钥与加密凭据
 
-- 连接时经 WebSocket 发到服务端内存
-- 解析 signer 后尽快清理 `[]byte` 引用（Go 无法保证字符串立即清零）
-- 不写盘、不入库、不记日志、不进 localStorage
+### 默认行为
+
+- 连接时私钥经 WebSocket 进入服务端内存
+- 不写盘、不入库、不记日志、不进浏览器存储
 - 连接页有明确安全提示
 
-## 加密保存凭据
+### 可选加密保存
 
-启用 `credentials.enabled` 后，可以在连接页保存连接信息、私钥和 passphrase。保存是显式操作，未点击保存的私钥仍只存在于页面和连接内存中。
+启用 `credentials.enabled` 后，可在连接页**主动保存**主机、私钥与 passphrase：
 
-- 登录密码通过 Argon2id 和数据库随机 salt 派生 256 位 Vault Key。
-- 整条凭据使用 AES-256-GCM 加密后写入 bbolt 数据库。
-- 普通 Session 的 Vault Key 只保存在服务端内存中；选择保持登录 30 天时，Vault Key 随会话数据加密封装在 HttpOnly Cookie 中，因此服务重启后仍能解密已保存凭据。
-- 数据库权限固定为 `0600`，数据库中不保存明文主机、用户名、私钥或 passphrase。
-- 修改 Web 登录密码后，旧密码加密的凭据无法自动解密；修改前请先备份或重新保存凭据。
+- 登录密码经 Argon2id + 数据库随机 salt 派生 Vault Key
+- 凭据使用 AES-256-GCM 加密后写入 bbolt
+- 保持登录时，Vault Key 随会话加密封装在 HttpOnly Cookie 中，服务重启后仍可解密
+- 数据库权限 `0600`，库内不存明文主机/用户名/私钥/passphrase
+- **修改 Web 登录密码后，旧密码加密的凭据无法自动解密**；改密前请备份或准备重新保存
 
-## 多连接、断线恢复与服务器监控
+## 多连接、重连与监控
 
-- 点击终端标签栏的 `＋` 可返回连接页创建新连接，已有标签保持在线。
-- 0.3 起 `＋` 会打开连接设置窗口；主页可直接添加、编辑、删除或连接加密凭据。
-- 每个标签代表一台服务器，可包含最多 4 个独立 SSH 窗格；左侧服务器监控数据在同标签窗格间共享。
-- WebSocket 意外断开时采用指数退避自动重连，最多重试 5 次，间隔约为 1、2、4、8、15 秒；连接成功后重置计数。
-- 勾选 tmux 恢复后，服务使用 `tmux new-session -A`；目标机需要安装 tmux。未启用 tmux 时重连会创建新 shell，无法恢复未保存的进程状态。
-- Linux 目标每 3 秒读取 `/proc/stat`、`/proc/meminfo`、`/proc/net/dev`、loadavg 和 uptime。非 Linux 或权限受限目标的监控栏显示不可用，但不影响终端。
+- 标签栏 `＋` 打开连接设置；主页可管理已保存凭据
+- 每个标签对应一台服务器，最多 4 个窗格；同标签共享左侧监控数据
+- WebSocket 断开后指数退避重连（约 1、2、4、8、15 秒），最多 5 次
+- 启用 tmux 恢复时使用 `tmux new-session -A`（目标机需安装 tmux）
+- Linux 目标约每 3 秒采集 `/proc` 指标；非 Linux 或不支持时监控显示不可用，不影响终端
+
+## 键盘快捷键
+
+终端页可用（焦点在终端内同样生效）。界面中以独立键帽展示。
+
+| 动作 | Windows / Linux | macOS |
+|---|---|---|
+| 折叠/展开侧栏 | `Ctrl` `Shift` `\` | `Ctrl` `Shift` `\` |
+| 向右分屏 | `Ctrl` `Shift` `→` | `Ctrl` `Shift` `→` |
+| 向下分屏 | `Ctrl` `Shift` `↓` | `Ctrl` `Shift` `↓` |
+| 关闭窗格 | `Ctrl` `Shift` `X` | `Ctrl` `Shift` `X` |
+| 下一/上一窗格 | `Ctrl` `Shift` `]` / `[` | `Ctrl` `Shift` `]` / `[` |
+| 复制 / 粘贴 | `Ctrl` `Shift` `C` / `V` | `⌘` `C` / `V` |
+
+- 有意避开会关闭浏览器窗口/标签的组合（如 `Ctrl+Shift+W`、`Ctrl+PageUp/Down`）
+- 顶栏快捷键面板只读，当前版本不可自定义
+
+## 自定义终端主题
+
+使用 xterm.js `ITheme` JSON（颜色表），与页面日夜间外观无关。
+
+- 内置主题已嵌入二进制
+- 仓库 [themes/](./themes) 提供同款模板
+- `ui.themes_dir`（默认 `./themes`，环境变量 `GOWEBSSH_THEMES_DIR`）下的 `*.json` 会合并进下拉列表
+- 同名文件覆盖内置主题；新文件追加
+- 扫描在请求 `GET /themes.js` 与 `GET /api/config/ui` 时进行，通常无需重启；浏览器需刷新
+- 文件名即主题 id；UI 会美化显示（如 `catppuccin-mocha` → `Catppuccin Mocha`）并展示色块
+
+内置：`github-light`、`solarized-light`、`catppuccin-latte`、`catppuccin-mocha`、`dracula`、`tokyo-night`、`one-dark`、`nord`
+
+```bash
+cp themes/catppuccin-mocha.json ./themes/my-theme.json
+# 编辑颜色后刷新浏览器即可
+```
+
+最小字段：
+
+```json
+{
+  "background": "#1e1e2e",
+  "foreground": "#cdd6f4"
+}
+```
+
+完整字段见 [themes/README.md](./themes/README.md)。
 
 ## HTTPS 反代示例
 
-后端监听本机回环，由反代提供 TLS。
+后端监听本机，由反代终止 TLS。
 
 ### Caddy
 
@@ -300,138 +342,63 @@ server {
 }
 ```
 
-生产建议开启：
+生产建议：
 
 ```yaml
 server:
   secure_cookie: true
 ```
 
-## 自定义终端主题
-
-终端主题使用 **xterm.js `ITheme` JSON**（颜色表），不是应用 UI 主题。
-
-- 内置默认主题已嵌入二进制，开箱即用
-- 仓库 [`themes/`](./themes) 提供同款 JSON，可复制为模板
-- 配置 `ui.themes_dir`（默认 `./themes`，环境变量 `GOWEBSSH_THEMES_DIR`）下的 `*.json` 会自动出现在设置页下拉框
-- 目录主题与内置主题**按文件名合并**：同名覆盖内置，新文件追加
-- 每次请求 `GET /themes.js` 与 `GET /api/config/ui` 都会重新扫描目录，**一般无需重启服务**；浏览器需刷新页面
-
-### 内置主题
-
-`github-light`、`solarized-light`、`catppuccin-latte`、`catppuccin-mocha`、`dracula`、`tokyo-night`、`one-dark`、`nord`
-
-> xterm.js 主题本身**不区分 light/dark 类型**，也没有官方 `type` 字段。名称中的 `light`/`dark` 仅作可读性约定；界面日夜间模式与终端主题是两套独立设置。
-
-### 添加主题
-
-```bash
-cp themes/catppuccin-mocha.json /path/to/themes_dir/my-theme.json
-# 编辑颜色后保存，强制刷新浏览器即可在下拉框中看到 my-theme
-```
-
-### JSON 格式
-
-文件名（不含 `.json`）即主题 id。最小字段：
-
-```json
-{
-  "background": "#1e1e2e",
-  "foreground": "#cdd6f4"
-}
-```
-
-推荐完整调色板：`background`、`foreground`、`cursor`、`cursorAccent`、`selectionBackground`，以及 ANSI 16 色（`black`…`white` 与 `brightBlack`…`brightWhite`）。可选 `name` 字段仅作元数据，不参与主题 id。
-
-详细说明见 [`themes/README.md`](./themes/README.md)。
-
-## 键盘快捷键
-
-终端页可用（焦点在 xterm 内同样生效）。按键以独立键帽展示，无 `+` 连接符。
-
-| 动作 | Windows / Linux | macOS |
-|---|---|---|
-| 折叠/展开侧栏 | Ctrl Shift \ | Ctrl Shift \ |
-| 向右分屏 | Ctrl Shift → | Ctrl Shift → |
-| 向下分屏 | Ctrl Shift ↓ | Ctrl Shift ↓ |
-| 关闭窗格 | Ctrl Shift X | Ctrl Shift X |
-| 下一/上一窗格 | Ctrl Shift ] / [ | Ctrl Shift ] / [ |
-| 复制 / 粘贴 | Ctrl Shift C / V | ⌘ C / ⌘ V |
-
-说明：
-
-- 避免使用会关闭浏览器窗口/标签的组合（如 `Ctrl+Shift+W`、`Ctrl+PageUp/Down`）
-- 应用内「快捷键」面板仅供查看，当前版本不可自定义
-- 右键菜单会对已绑定操作显示对应快捷键
-
 ## API 摘要
 
-- `GET /` 前端
-- `GET /api/healthz`
-- `POST /api/login` JSON `{username,password,remember}`
-- `POST /api/logout`
-- `GET /api/session`
-- `GET /api/config/ui`（含主题列表 `themes`、主题目录 `themesDir`）
-- `GET /themes.js`（动态生成 `window.GOWEBSSH_THEMES`）
-- `GET /api/ws/ssh` WebSocket（需登录；首条消息 `connect`）
-- `GET /api/credentials` 加密凭据摘要列表
-- `POST /api/credentials` 新增或更新加密凭据
-- `GET /api/credentials/{id}` 解密单条凭据
-- `DELETE /api/credentials/{id}` 删除凭据
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | `/` | 前端 |
+| GET | `/api/healthz` | 健康检查 |
+| POST | `/api/login` | `{username,password,remember}` |
+| POST | `/api/logout` | 退出 |
+| GET | `/api/session` | 当前会话 |
+| GET | `/api/config/ui` | UI 配置（含 `themes`、`themesDir`） |
+| GET | `/themes.js` | 动态主题表 `window.GOWEBSSH_THEMES` |
+| GET | `/api/ws/ssh` | WebSocket（需登录；首条 `connect`） |
+| GET/POST/DELETE | `/api/credentials`… | 加密凭据 CRUD |
 
-## 构建与测试
+## 构建与发布
 
 ```bash
-go mod tidy
 go test ./...
 go build -o go-webssh ./cmd/webssh
 ```
 
-### 本地测试服务部署
-
-开发机可使用 [`scripts/deploy-test.sh`](./scripts/deploy-test.sh) 一键测试、构建并重启本机 systemd 服务（保留现有配置）：
-
-```bash
-sudo ./scripts/deploy-test.sh
-```
-
-
-## Tag 自动构建
-
-推送以 `v` 开头的 Tag 会触发 GitHub Actions，例如：
+推送以 `v` 开头的 Tag 会触发 GitHub Actions：测试、`go vet`、交叉编译 Linux amd64/arm64，并创建/更新 Release（含压缩包与 `SHA256SUMS`）。Tag 名会写入 `go-webssh --version`。
 
 ```bash
 git tag v0.5.8
 git push origin v0.5.8
 ```
 
-工作流会先执行测试和 `go vet`，然后交叉编译以下 Linux 平台，并自动创建或更新对应的 GitHub Release：
+可选：本机已用 systemd 安装时，可用 [scripts/deploy-test.sh](./scripts/deploy-test.sh) 从源码构建并重启服务（保留配置）：
 
-- Linux amd64 / arm64
-
-Release 同时包含每个平台的压缩包和 `SHA256SUMS` 校验文件。构建时会把 Tag 名写入 `go-webssh --version`。
+```bash
+sudo ./scripts/deploy-test.sh
+```
 
 ## 常见问题
 
-**Q: 连接失败提示 host key？**
+**连接失败提示 host key？**  
+默认 `known-hosts`。用 `ssh-keyscan` 写入 known_hosts，或在明确风险下使用 `insecure-ignore`。
 
-A: 默认 `known-hosts`。用 `ssh-keyscan` 写入 known_hosts，或在明确风险下改用 `insecure-ignore`。
+**连不上内网 IP？**  
+默认 `allow_private_ranges=false`，需要时显式打开。
 
-**Q: 连不上内网 IP？**
+**连不上 127.0.0.1？**  
+默认禁止 loopback 以防 SSRF。确有需要时用 `network_policy.allow` 显式放行。
 
-A: 默认 `allow_private_ranges=false`。需要时显式打开。
+**私钥安全吗？**  
+会经过服务端内存。请使用 HTTPS、强登录密码、受信服务器与专用 key。需要持久化时再用加密凭据库，并知悉改密影响。
 
-**Q: 连不上 127.0.0.1？**
-
-A: 默认禁止 loopback，防止 SSRF。不要为图方便默认放开；如确有需要，使用 `network_policy.allow` 显式放行并清楚风险。
-
-**Q: 私钥安全吗？**
-
-A: 会经过服务端内存。请使用 HTTPS、强 Web 登录密码、受信服务器与专用 key。
-
-**Q: 为什么不用每个目标一个 ttyd？**
-
-A: 本项目单进程多会话，浏览器提交目标与私钥即可连不同主机。
+**为什么不用每台目标一个 ttyd？**  
+本项目单进程多会话，浏览器指定目标与私钥即可连接不同主机。
 
 ## License
 
