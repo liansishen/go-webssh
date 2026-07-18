@@ -238,16 +238,16 @@ func (s *Server) handleCredentialList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer clearBytes(info.VaultKey)
-	items, err := s.vault.List(info.VaultKey)
+	items, removed, err := s.vault.ListSummaries(info.Username, info.VaultKey)
 	if err != nil {
 		writeErr(w, http.StatusUnprocessableEntity, "VAULT_DECRYPT_FAILED", "credential vault could not be decrypted")
 		return
 	}
 	summaries := make([]credentialSummary, 0, len(items))
 	for _, item := range items {
-		summaries = append(summaries, credentialSummary{ID: item.ID, Name: item.Name, Host: item.Host, Port: item.Port, Username: item.Username, Term: item.Term, UseTmux: item.UseTmux, HasPrivateKey: item.PrivateKey != "", HasPassphrase: item.Passphrase != "", UpdatedAt: item.UpdatedAt})
+		summaries = append(summaries, credentialSummary{ID: item.ID, Name: item.Name, Host: item.Host, Port: item.Port, Username: item.Username, Term: item.Term, UseTmux: item.UseTmux, HasPrivateKey: item.HasPrivateKey, HasPassphrase: item.HasPassphrase, UpdatedAt: item.UpdatedAt})
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"credentials": summaries})
+	writeJSON(w, http.StatusOK, map[string]any{"credentials": summaries, "removedCredentials": removed})
 }
 
 func (s *Server) handleCredentialGet(w http.ResponseWriter, r *http.Request) {
@@ -298,7 +298,7 @@ func (s *Server) handleCredentialPut(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "BAD_REQUEST", "credential is too large")
 		return
 	}
-	saved, err := s.vault.Put(info.VaultKey, item)
+	saved, err := s.vault.PutForUser(info.VaultKey, info.Username, item)
 	item.PrivateKey, item.Passphrase = "", ""
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to save credential")

@@ -58,7 +58,7 @@ curl -fsSL https://raw.githubusercontent.com/liansishen/go-webssh/main/install.s
 可选环境变量：
 
 ```bash
-GOWEBSSH_VERSION=v0.5.8 \
+GOWEBSSH_VERSION=v0.5.9 \
 GOWEBSSH_LISTEN=127.0.0.1:8080 \
 GOWEBSSH_USERNAME=admin \
 GOWEBSSH_ALLOW_PRIVATE_RANGES=false \
@@ -361,8 +361,8 @@ go build -o go-webssh ./cmd/webssh
 推送以 `v` 开头的 Tag 会触发 GitHub Actions：测试、`go vet`、交叉编译 Linux amd64/arm64，并创建/更新 Release（含压缩包与 `SHA256SUMS`）。Tag 名会写入 `go-webssh --version`。
 
 ```bash
-git tag v0.5.8
-git push origin v0.5.8
+git tag v0.5.9
+git push origin v0.5.9
 ```
 
 可选：本机已用 systemd 安装时，可用 [scripts/deploy-test.sh](./scripts/deploy-test.sh) 从源码构建并重启服务（保留配置）：

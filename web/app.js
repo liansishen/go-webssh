@@ -2,6 +2,7 @@
 (function () {
   "use strict";
   const STORAGE_KEY = "gowebssh.ui";
+  const NOTICE_KEY = "gowebssh.notices";
   const $ = (id) => document.getElementById(id);
   const IS_MAC = /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent);
   // Avoid Alt (OS/browser rectangular selection) and browser tab shortcuts.
@@ -194,6 +195,11 @@
       nameRequired: "Connection name is required.",
       saveFailed: "Unable to save credential.",
       loadFailed: "Unable to load credential.",
+      listFailed: "Unable to load saved connections.",
+      vaultDecryptFailed:
+        "This connection's private key was encrypted with an earlier login password and cannot be decrypted with the current password. Re-save the connection to use it.",
+      removedCredentials:
+        "{count} older saved connection(s) could not be migrated and were removed.",
       deleteFailed: "Unable to delete credential.",
       connectionLost: "Connection lost; reconnecting in {seconds}s",
       sessionClosed: "Session closed",
@@ -327,6 +333,10 @@
       nameRequired: "连接名称不能为空。",
       saveFailed: "无法保存凭据。",
       loadFailed: "无法加载凭据。",
+      listFailed: "无法加载已保存的连接。",
+      vaultDecryptFailed:
+        "该连接的私钥由旧登录密码加密，当前密码无法解密。请重新保存此连接后再使用。",
+      removedCredentials: "{count} 个较早保存的连接无法迁移，已被清理。",
       deleteFailed: "无法删除凭据。",
       connectionLost: "连接已中断，{seconds} 秒后重连",
       sessionClosed: "会话已关闭",
@@ -473,7 +483,8 @@
     credentials = [],
     activeId = null,
     serial = 0,
-    currentPage = "login";
+    currentPage = "login",
+    connectionBusy = false;
   const sessions = new Map();
   const groups = new Map();
   let activeGroupId = null;
@@ -537,6 +548,16 @@
       }),
     );
   }
+  function loadNotices() {
+    try {
+      return JSON.parse(localStorage.getItem(NOTICE_KEY) || "{}");
+    } catch (_) {
+      return {};
+    }
+  }
+  function saveNotices(notices) {
+    localStorage.setItem(NOTICE_KEY, JSON.stringify(notices || {}));
+  }
   async function api(path, options = {}) {
     const res = await fetch(path, {
       credentials: "same-origin",
@@ -557,7 +578,12 @@
   }
   function errorMessage(data, fallback) {
     const code = data?.error?.code;
-    const map = { AUTH_REQUIRED: "login", INVALID_PORT: "invalidPort" };
+    const map = {
+      AUTH_REQUIRED: "login",
+      INVALID_PORT: "invalidPort",
+      VAULT_DECRYPT_FAILED: "vaultDecryptFailed",
+      CREDENTIAL_STORAGE_DISABLED: "saveFailed",
+    };
     return code && map[code]
       ? t(map[code])
       : data?.error?.message || t(fallback);
@@ -906,13 +932,35 @@
     closeModal(e.settingsModal);
   }
 
-  async function refreshCredentials() {
+  async function refreshCredentials(options = {}) {
     if (!uiConfig.credentialStorage) return;
     const { res, data } = await api("/api/credentials");
     if (res.ok) {
       credentials = data.credentials || [];
       renderHome();
+      const removed = Number(data.removedCredentials) || 0;
+      const notices = loadNotices();
+      const user = e.authUser.textContent || "default";
+      if (removed > 0) {
+        const key = "removedCredentials:" + user;
+        if (notices[key] !== removed) {
+          showError(t("removedCredentials", { count: removed }));
+          notices[key] = removed;
+          saveNotices(notices);
+        }
+      } else {
+        const key = "removedCredentials:" + user;
+        if (key in notices) {
+          delete notices[key];
+          saveNotices(notices);
+        }
+      }
+      return true;
     }
+    const message = errorMessage(data, "listFailed");
+    if (options.inline) e.connectError.textContent = message;
+    else showError(message);
+    return false;
   }
   function activeForCredential(id) {
     return [...sessions.values()].find((s) => s.savedId === id);
@@ -1005,8 +1053,15 @@
     e.name.dataset.id = "";
     e.connectError.textContent = "";
   }
+  function setConnectionBusy(busy) {
+    connectionBusy = busy;
+    [e.save, e.connectOnly, e.saveConnect].forEach((button) => {
+      if (button) button.disabled = busy;
+    });
+  }
   function openConnection(item = null) {
     resetConnectionForm();
+    setConnectionBusy(false);
     if (item) {
       e.name.dataset.id = item.id || "";
       e.name.value = item.name || "";
@@ -1053,27 +1108,35 @@
       e.connectError.textContent = errorMessage(data, "saveFailed");
       return null;
     }
-    await refreshCredentials();
+    if (!(await refreshCredentials({ inline: true }))) return null;
     return data;
   }
   async function connectionAction(kind) {
-    const c = formCredential(),
-      needsSave = kind !== "connect",
-      error = validate(c, needsSave);
-    if (error) {
-      e.connectError.textContent = error;
-      return;
-    }
-    let savedId = c.id;
-    if (needsSave) {
-      const saved = await persistCredential(c);
-      if (!saved) return;
-      savedId = saved.id;
-    }
-    closeModal(e.connectionModal);
-    if (kind !== "save") {
-      createSession({ ...c, savedId });
-      e.pass.value = "";
+    if (connectionBusy) return;
+    setConnectionBusy(true);
+    let keepLocked = false;
+    try {
+      const c = formCredential(),
+        needsSave = kind !== "connect",
+        error = validate(c, needsSave);
+      if (error) {
+        e.connectError.textContent = error;
+        return;
+      }
+      let savedId = c.id;
+      if (needsSave) {
+        const saved = await persistCredential(c);
+        if (!saved) return;
+        savedId = saved.id;
+      }
+      closeModal(e.connectionModal);
+      keepLocked = true;
+      if (kind !== "save") {
+        createSession({ ...c, savedId });
+        e.pass.value = "";
+      }
+    } finally {
+      if (!keepLocked) setConnectionBusy(false);
     }
   }
 
@@ -1828,6 +1891,7 @@
   );
   e.form.addEventListener("submit", (ev) => {
     ev.preventDefault();
+    if (connectionBusy) return;
     connectionAction("connect");
   });
   e.settingsBtn.addEventListener("click", openSettings);
