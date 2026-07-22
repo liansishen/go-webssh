@@ -282,10 +282,21 @@ func (s *wsSession) streamMetrics(ctx context.Context) {
 			if err != nil {
 				continue
 			}
-			data := MetricsData{MemoryTotal: current.MemoryTotal, NetworkRXBytes: current.NetworkRX, NetworkTXBytes: current.NetworkTX, Load1: current.Load1, UptimeSeconds: current.Uptime}
+			data := MetricsData{
+				MemoryTotal:    current.MemoryTotal,
+				DiskUsed:       current.DiskUsed,
+				DiskTotal:      current.DiskTotal,
+				NetworkRXBytes: current.NetworkRX,
+				NetworkTXBytes: current.NetworkTX,
+				Load1:          current.Load1,
+				UptimeSeconds:  current.Uptime,
+			}
 			if current.MemoryTotal > 0 {
 				data.MemoryUsed = current.MemoryTotal - current.MemoryAvail
 				data.MemoryPercent = float64(data.MemoryUsed) * 100 / float64(current.MemoryTotal)
+			}
+			if current.DiskTotal > 0 {
+				data.DiskPercent = float64(current.DiskUsed) * 100 / float64(current.DiskTotal)
 			}
 			if !previous.CollectedAt.IsZero() {
 				totalDelta := current.CPUTotal - previous.CPUTotal
@@ -348,13 +359,10 @@ func (s *wsSession) copyOutput(ctx context.Context, r io.Reader) {
 		}
 		n, err := r.Read(buf)
 		if n > 0 {
-			payload, mErr := EncodeMessage("output", string(buf[:n]))
-			if mErr == nil {
-				s.writeMu.Lock()
-				_ = s.conn.SetWriteDeadline(time.Now().Add(30 * time.Second))
-				_ = s.conn.WriteMessage(websocket.TextMessage, payload)
-				s.writeMu.Unlock()
-			}
+			s.writeMu.Lock()
+			_ = s.conn.SetWriteDeadline(time.Now().Add(30 * time.Second))
+			_ = s.conn.WriteMessage(websocket.BinaryMessage, buf[:n])
+			s.writeMu.Unlock()
 		}
 		if err != nil {
 			return

@@ -48,6 +48,9 @@ type MetricsData struct {
 	MemoryUsed      uint64  `json:"memoryUsed"`
 	MemoryTotal     uint64  `json:"memoryTotal"`
 	MemoryPercent   float64 `json:"memoryPercent"`
+	DiskUsed        uint64  `json:"diskUsed"`
+	DiskTotal       uint64  `json:"diskTotal"`
+	DiskPercent     float64 `json:"diskPercent"`
 	NetworkRXBytes  uint64  `json:"networkRxBytes"`
 	NetworkTXBytes  uint64  `json:"networkTxBytes"`
 	NetworkRXPerSec float64 `json:"networkRxPerSec"`

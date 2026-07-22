@@ -120,6 +120,7 @@
       disconnect: "Disconnect",
       reconnect: "Reconnect",
       memory: "Memory",
+      disk: "Disk (/)",
       networkDown: "Network ↓",
       networkUp: "Network ↑",
       load: "Load",
@@ -260,6 +261,7 @@
       disconnect: "断开连接",
       reconnect: "重新连接",
       memory: "内存",
+      disk: "磁盘（/）",
       networkDown: "网络下载 ↓",
       networkUp: "网络上传 ↑",
       load: "系统负载",
@@ -467,6 +469,8 @@
     metricCPUBar: $("metric-cpu-bar"),
     metricMemory: $("metric-memory"),
     metricMemoryBar: $("metric-memory-bar"),
+    metricDisk: $("metric-disk"),
+    metricDiskBar: $("metric-disk-bar"),
     metricRX: $("metric-rx"),
     metricTX: $("metric-tx"),
     metricLoad: $("metric-load"),
@@ -1350,35 +1354,53 @@
     directions.forEach((direction) => {
       const bar = document.createElement("div");
       bar.className = "pane-splitter splitter-" + direction;
+      let dragging = false;
+      const move = (ev) => {
+        if (!dragging || (ev.buttons & 1) === 0) return;
+        const rect = group.container.getBoundingClientRect();
+        if (direction === "right") {
+          group.colRatio = Math.min(
+            75,
+            Math.max(25, ((ev.clientX - rect.left) / rect.width) * 100),
+          );
+          group.container.style.setProperty(
+            "--pane-col",
+            group.colRatio + "%",
+          );
+        } else {
+          group.rowRatio = Math.min(
+            75,
+            Math.max(25, ((ev.clientY - rect.top) / rect.height) * 100),
+          );
+          group.container.style.setProperty(
+            "--pane-row",
+            group.rowRatio + "%",
+          );
+        }
+        group.panes.forEach(fit);
+      };
+      const stop = (ev) => {
+        if (!dragging) return;
+        dragging = false;
+        bar.classList.remove("dragging");
+        if (bar.hasPointerCapture(ev.pointerId)) {
+          bar.releasePointerCapture(ev.pointerId);
+        }
+        group.panes.forEach(fit);
+      };
       bar.addEventListener("pointerdown", (ev) => {
+        if (ev.button !== 0 || (ev.buttons & 1) === 0) return;
+        ev.preventDefault();
+        dragging = true;
+        bar.classList.add("dragging");
         bar.setPointerCapture(ev.pointerId);
-        const move = (eve) => {
-          const rect = group.container.getBoundingClientRect();
-          if (direction === "right") {
-            group.colRatio = Math.min(
-              75,
-              Math.max(25, ((eve.clientX - rect.left) / rect.width) * 100),
-            );
-            group.container.style.setProperty(
-              "--pane-col",
-              group.colRatio + "%",
-            );
-          } else {
-            group.rowRatio = Math.min(
-              75,
-              Math.max(25, ((eve.clientY - rect.top) / rect.height) * 100),
-            );
-            group.container.style.setProperty(
-              "--pane-row",
-              group.rowRatio + "%",
-            );
-          }
-          group.panes.forEach(fit);
-        };
-        bar.addEventListener("pointermove", move);
-        bar.addEventListener("pointerup", () => group.panes.forEach(fit), {
-          once: true,
-        });
+      });
+      bar.addEventListener("pointermove", move);
+      bar.addEventListener("pointerup", stop);
+      bar.addEventListener("pointercancel", stop);
+      bar.addEventListener("lostpointercapture", () => {
+        dragging = false;
+        bar.classList.remove("dragging");
       });
       group.container.appendChild(bar);
     });
@@ -1416,6 +1438,7 @@
     s.suppressReconnect = false;
     setState(s, s.retry ? "reconnecting" : "connecting");
     const socket = new WebSocket(wsURL());
+    socket.binaryType = "arraybuffer";
     s.socket = socket;
     socket.onopen = () => {
       try {
@@ -1430,6 +1453,14 @@
       });
     };
     socket.onmessage = (event) => {
+      if (event.data instanceof ArrayBuffer) {
+        const atBottom = isTerminalAtBottom(s.term);
+        s.term.write(new Uint8Array(event.data), () => {
+          // Keep follow-tail behavior for live CLI output without yanking scrolled-up views.
+          if (atBottom) s.term.scrollToBottom();
+        });
+        return;
+      }
       let msg;
       try {
         msg = JSON.parse(event.data);
@@ -1731,11 +1762,17 @@
       return;
     }
     renderLatency(group);
-    e.metricCPU.textContent = m.cpuPercent.toFixed(1) + "%";
-    e.metricCPUBar.style.width = Math.min(100, m.cpuPercent) + "%";
+    const cpuPercent = Number(m.cpuPercent) || 0;
+    const memoryPercent = Number(m.memoryPercent) || 0;
+    const diskPercent = Number(m.diskPercent) || 0;
+    e.metricCPU.textContent = cpuPercent.toFixed(1) + "%";
+    e.metricCPUBar.style.width = Math.min(100, cpuPercent) + "%";
     e.metricMemory.textContent =
-      m.memoryPercent.toFixed(1) + "% · " + humanBytes(m.memoryUsed);
-    e.metricMemoryBar.style.width = Math.min(100, m.memoryPercent) + "%";
+      memoryPercent.toFixed(1) + "% · " + humanBytes(m.memoryUsed);
+    e.metricMemoryBar.style.width = Math.min(100, memoryPercent) + "%";
+    e.metricDisk.textContent =
+      diskPercent.toFixed(1) + "% · " + humanBytes(m.diskUsed);
+    e.metricDiskBar.style.width = Math.min(100, diskPercent) + "%";
     e.metricRX.textContent = humanBytes(m.networkRxPerSec) + "/s";
     e.metricTX.textContent = humanBytes(m.networkTxPerSec) + "/s";
     e.metricLoad.textContent = Number(m.load1).toFixed(2);
@@ -1755,12 +1792,16 @@
     [
       e.metricCPU,
       e.metricMemory,
+      e.metricDisk,
       e.metricRX,
       e.metricTX,
       e.metricLoad,
       e.metricUptime,
     ].forEach((n) => (n.textContent = "—"));
-    e.metricCPUBar.style.width = e.metricMemoryBar.style.width = "0";
+    e.metricCPUBar.style.width =
+      e.metricMemoryBar.style.width =
+      e.metricDiskBar.style.width =
+        "0";
   }
   function resetMetrics() {
     e.metricTarget.textContent = "—";

@@ -43,7 +43,7 @@
 - Network Policy：默认拒绝 loopback、link-local、metadata、私网（可配置）
 - 可选 AES-256-GCM 加密凭据库（登录密码 + Argon2id 派生密钥）
 - 前端资源嵌入单二进制
-- Linux 目标机 CPU / 内存 / 网络 / 负载 / 运行时间与 WebSocket 延迟监控
+- Linux 目标机 CPU / 内存 / 根分区磁盘 / 网络 / 负载 / 运行时间与 WebSocket 延迟监控
 
 ## 快速启动
 
@@ -58,7 +58,7 @@ curl -fsSL https://raw.githubusercontent.com/liansishen/go-webssh/main/install.s
 可选环境变量：
 
 ```bash
-GOWEBSSH_VERSION=v0.5.9 \
+GOWEBSSH_VERSION=v0.5.10 \
 GOWEBSSH_LISTEN=127.0.0.1:8080 \
 GOWEBSSH_USERNAME=admin \
 GOWEBSSH_ALLOW_PRIVATE_RANGES=false \
@@ -353,17 +353,64 @@ server:
 
 ## 构建与发布
 
+### 本地构建检查
+
 ```bash
 go test ./...
+go vet ./...
 go build -o go-webssh ./cmd/webssh
 ```
 
-推送以 `v` 开头的 Tag 会触发 GitHub Actions：测试、`go vet`、交叉编译 Linux amd64/arm64，并创建/更新 Release（含压缩包与 `SHA256SUMS`）。Tag 名会写入 `go-webssh --version`。
+### 正式发布流程
+
+项目没有 `release` 分支。正式发布通过向 `main` 推送版本提交，再推送以 `v` 开头的版本 Tag 完成。
+
+发布前需要同步以下版本号：
+
+- `cmd/webssh/main.go` 中的默认 `version`；
+- 本文档安装示例中的 `GOWEBSSH_VERSION`；
+- `web/index.html` 中有改动的前端静态资源查询版本，用于刷新浏览器缓存。
+
+以发布 `v0.5.10` 为例：
 
 ```bash
-git tag v0.5.9
-git push origin v0.5.9
+# 1. 确认工作区和分支
+git status --short --branch
+
+# 2. 运行发布前检查
+gofmt -w $(find cmd internal themes web -name '*.go')
+go test ./...
+go vet ./...
+go build ./...
+node --check web/app.js
+git diff --check
+
+# 3. 提交并推送 main
+git add -A
+git commit -m "Release v0.5.10"
+git push origin main
+
+# 4. 在已推送的发布提交上创建并推送标签
+git tag -a v0.5.10 -m "Go WebSSH v0.5.10"
+git push origin v0.5.10
 ```
+
+`.github/workflows/release.yml` 会在版本 Tag 推送后自动执行：
+
+1. 运行 `go test ./...` 和 `go vet ./...`；
+2. 交叉编译 Linux amd64/arm64；
+3. 生成发布压缩包、`install.sh` 和 `SHA256SUMS`；
+4. 创建或更新对应的 GitHub Release，并上传构建产物；
+5. 通过构建参数将 Tag 名写入发布二进制的 `go-webssh --version`。
+
+推送后可使用以下命令确认工作流和 Release 状态：
+
+```bash
+gh run list --workflow release.yml --limit 5
+gh release view v0.5.10
+```
+
+如果工作流失败，应先修复问题并重新运行工作流；不要复用同一个版本号发布不同源码。如发布 Tag 尚未被其他人使用且确实必须更正，应明确检查远端状态后再处理。
 
 可选：本机已用 systemd 安装时，可用 [scripts/deploy-test.sh](./scripts/deploy-test.sh) 从源码构建并重启服务（保留配置）：
 
