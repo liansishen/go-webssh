@@ -1191,6 +1191,64 @@
     clearTimeout(s.fitTimer);
     s.fitTimer = setTimeout(() => fit(s), 50);
   }
+  function cancelFocus(s) {
+    if (!s) return;
+    clearTimeout(s.focusTimer);
+    s.focusTimer = null;
+  }
+  function focusTerminal(s, delay = 0) {
+    if (!s || document.hidden || !document.hasFocus()) return;
+    cancelFocus(s);
+    s.focusTimer = setTimeout(() => {
+      s.focusTimer = null;
+      if (
+        !sessions.has(s.id) ||
+        activeId !== s.id ||
+        currentPage !== "terminal" ||
+        anyModalOpen() ||
+        document.hidden ||
+        !document.hasFocus()
+      )
+        return;
+      const helper = s.container.querySelector(".xterm-helper-textarea");
+      if (document.activeElement !== helper) s.term.focus();
+    }, delay);
+  }
+  function releaseTerminalMouseButtons() {
+    sessions.forEach((s) => {
+      const target = s.term.element;
+      let remaining = s.mouseButtons;
+      if (!target || !remaining) return;
+      const pressed = [
+        [1, 0],
+        [4, 1],
+        [2, 2],
+      ].filter(([mask]) => remaining & mask);
+      pressed.forEach(([mask, button]) => {
+        remaining &= ~mask;
+        target.dispatchEvent(
+          new MouseEvent("mouseup", {
+            bubbles: true,
+            cancelable: true,
+            button,
+            buttons: remaining,
+            clientX: s.mouseX || 0,
+            clientY: s.mouseY || 0,
+          }),
+        );
+      });
+      s.mouseButtons = 0;
+    });
+  }
+  function releaseTerminalMouseButtonsOnFocusLoss(force = false) {
+    // Browsers can drop mouseup when a tab is hidden or the window loses focus.
+    // Releasing on the next task prevents xterm's document drag listener from
+    // treating every later mousemove as terminal input after the tab returns.
+    setTimeout(() => {
+      if (force || document.hidden || !document.hasFocus())
+        releaseTerminalMouseButtons();
+    }, 0);
+  }
   function fitAll() {
     sessions.forEach(fit);
   }
@@ -1303,6 +1361,10 @@
       latency: null,
       tmuxSession: "",
       metrics: null,
+      focusTimer: null,
+      mouseButtons: 0,
+      mouseX: 0,
+      mouseY: 0,
     };
     sessions.set(id, s);
     group.panes.push(s);
@@ -1313,8 +1375,31 @@
     s.fitTimer = null;
     s.observer = new ResizeObserver(() => scheduleFit(s));
     s.observer.observe(container);
-    pane.addEventListener("pointerdown", () => activatePane(id));
-    pane.addEventListener("focusin", () => activatePane(id));
+    pane.addEventListener("pointerdown", (ev) => {
+      s.mouseButtons = ev.buttons;
+      s.mouseX = ev.clientX;
+      s.mouseY = ev.clientY;
+      activatePane(id, { focus: false });
+    });
+    pane.addEventListener("pointermove", (ev) => {
+      s.mouseButtons = ev.buttons;
+      s.mouseX = ev.clientX;
+      s.mouseY = ev.clientY;
+    });
+    pane.addEventListener("pointerup", (ev) => {
+      s.mouseButtons = ev.buttons;
+      s.mouseX = ev.clientX;
+      s.mouseY = ev.clientY;
+    });
+    pane.addEventListener("lostpointercapture", (ev) => {
+      s.mouseButtons = ev.buttons;
+      s.mouseX = ev.clientX;
+      s.mouseY = ev.clientY;
+    });
+    pane.addEventListener("pointercancel", () =>
+      releaseTerminalMouseButtonsOnFocusLoss(true),
+    );
+    pane.addEventListener("focusin", () => activatePane(id, { focus: false }));
     pane.addEventListener("contextmenu", (ev) => openContextMenu(ev, s));
     updateGroupLayout(group);
     updateTab(s);
@@ -1471,7 +1556,7 @@
         s.retry = 0;
         s.tmuxSession = msg.data.tmuxSession || s.tmuxSession;
         setState(s, "connected");
-        s.term.focus();
+        focusTerminal(s);
         fit(s);
         sendPing(s);
         clearInterval(s.pingTimer);
@@ -1563,6 +1648,7 @@
   function disposePane(s) {
     if (!s) return;
     clearTimeout(s.fitTimer);
+    cancelFocus(s);
     disconnectSession(s);
     s.observer.disconnect();
     s.term.dispose();
@@ -1613,24 +1699,28 @@
     const pane = group.panes.find((p) => p.id === activeId) || group.panes[0];
     activatePane(pane.id);
   }
-  function activatePane(id) {
+  function activatePane(id, options = {}) {
     const s = sessions.get(id);
     if (!s) return;
+    const focus = options.focus !== false;
     const groupChanged = activeGroupId !== s.groupId;
+    const paneChanged = activeId !== id;
     activeGroupId = s.groupId;
     activeId = id;
     groups.forEach((g) => {
       g.container.classList.toggle("hidden", g.id !== s.groupId);
       g.tab.classList.toggle("active", g.id === s.groupId);
     });
-    sessions.forEach((x) => x.pane.classList.toggle("active", x.id === id));
-    showPage("terminal");
+    sessions.forEach((x) => {
+      x.pane.classList.toggle("active", x.id === id);
+      if (x.id !== id) cancelFocus(x);
+    });
+    if (currentPage !== "terminal") showPage("terminal");
     if (groupChanged) renderMetrics(groups.get(s.groupId));
-    updateSidebar();
-    setTimeout(() => {
-      fit(s);
-      s.term.focus();
-    }, 30);
+    if (paneChanged || groupChanged) updateSidebar();
+    scheduleFit(s);
+    if (focus) focusTerminal(s, 30);
+    else cancelFocus(s);
   }
   function updateSidebar() {
     const s = sessions.get(activeId);
@@ -1664,10 +1754,8 @@
     e.contextMenu.classList.add("hidden");
     contextSession = null;
   }
-  function openContextMenu(ev, s) {
-    if (!s) return;
-    ev.preventDefault();
-    activatePane(s.id);
+  function showContextMenuAt(ev, s) {
+    activatePane(s.id, { focus: false });
     contextSession = s;
     updateShortcutLabels();
     const count = groups.get(s.groupId).panes.length;
@@ -1687,6 +1775,29 @@
       Math.max(8, Math.min(ev.clientX, innerWidth - rect.width - 8)) + "px";
     e.contextMenu.style.top =
       Math.max(8, Math.min(ev.clientY, innerHeight - rect.height - 8)) + "px";
+  }
+  function openContextMenu(ev, s) {
+    if (!s) return;
+    const fromTab = ev.currentTarget?.classList?.contains("terminal-tab");
+    // Remote programs own right-click while DEC mouse reporting is active.
+    // Shift bypasses mouse reporting and this app menu for the browser menu.
+    if (
+      !fromTab &&
+      s.term.modes?.mouseTrackingMode !== "none" &&
+      !ev.shiftKey
+    ) {
+      hideContextMenu();
+      ev.preventDefault();
+      return;
+    }
+    if (!fromTab && ev.shiftKey) {
+      hideContextMenu();
+      ev.stopPropagation();
+      return;
+    }
+    ev.preventDefault();
+    ev.stopPropagation();
+    showContextMenuAt(ev, s);
   }
   async function copySelection(s) {
     if (!s?.term.hasSelection()) return;
@@ -2173,6 +2284,31 @@
   });
   document.addEventListener("pointerdown", (ev) => {
     if (!ev.target.closest("#terminal-context-menu")) hideContextMenu();
+  });
+  window.addEventListener("blur", () => {
+    releaseTerminalMouseButtonsOnFocusLoss();
+    sessions.forEach(cancelFocus);
+    hideContextMenu();
+  });
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) {
+      releaseTerminalMouseButtonsOnFocusLoss();
+      sessions.forEach(cancelFocus);
+      hideContextMenu();
+      return;
+    }
+    const s = sessions.get(activeId);
+    if (s && currentPage === "terminal") {
+      scheduleFit(s);
+      focusTerminal(s, 60);
+    }
+  });
+  window.addEventListener("focus", () => {
+    const s = sessions.get(activeId);
+    if (s && currentPage === "terminal" && !document.hidden) {
+      scheduleFit(s);
+      focusTerminal(s, 30);
+    }
   });
   window.addEventListener("resize", fitAll);
   initResizer();
