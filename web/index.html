@@ -6,7 +6,7 @@
     <title>Go WebSSH</title>
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="/vendor/xterm.css" />
-    <link rel="stylesheet" href="/style.css?v=0.5.10" />
+    <link rel="stylesheet" href="/style.css?v=0.5.12" />
   </head>
   <body>
     <div id="app">
@@ -474,6 +474,55 @@
     </div>
 
     <div
+      id="remote-clipboard-modal"
+      class="modal hidden"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="remote-clipboard-modal-title"
+    >
+      <div class="modal-backdrop" data-close-modal="remote-clipboard"></div>
+      <div class="modal-window paste-modal-window">
+        <header class="modal-header">
+          <h2
+            id="remote-clipboard-modal-title"
+            data-i18n="remoteClipboardRequest"
+          >
+            Remote clipboard request
+          </h2>
+          <button
+            type="button"
+            class="icon-btn"
+            data-close-modal="remote-clipboard"
+            aria-label="Close"
+          >
+            ×
+          </button>
+        </header>
+        <div class="modal-body">
+          <p id="remote-clipboard-summary" class="muted"></p>
+          <pre id="remote-clipboard-preview" class="paste-preview"></pre>
+        </div>
+        <footer class="modal-footer">
+          <button
+            type="button"
+            class="btn ghost"
+            data-close-modal="remote-clipboard"
+            data-i18n="cancel"
+          >
+            Cancel</button
+          ><button
+            type="button"
+            id="confirm-remote-clipboard-btn"
+            class="btn primary auto-width"
+            data-i18n="copyToClipboard"
+          >
+            Copy to clipboard
+          </button>
+        </footer>
+      </div>
+    </div>
+
+    <div
       id="connection-modal"
       class="modal hidden"
       role="dialog"
@@ -737,6 +786,21 @@
               >Automatically copy selected text</span
             ></label
           >
+          <label class="checkbox-row settings-wide"
+            ><input
+              type="checkbox"
+              id="setting-allow-remote-clipboard"
+            /><span data-i18n="allowRemoteClipboard"
+              >Allow remote programs to write to the browser clipboard (OSC
+              52)</span
+            ></label
+          >
+          <small
+            class="muted settings-wide remote-clipboard-hint"
+            data-i18n="remoteClipboardHint"
+            >Required for Herdr copy over SSH. Only enable it for remote hosts
+            you trust.</small
+          >
         </div>
         <footer class="modal-footer">
           <button
@@ -753,7 +817,7 @@
 
     <script src="/vendor/xterm.js"></script>
     <script src="/vendor/xterm-addon-fit.js"></script>
-    <script src="/themes.js?v=0.5.9"></script>
+    <script src="/themes.js?v=0.5.12"></script>
     <script src="/app.js?v=0.5.12"></script>
   </body>
 </html>

@@ -139,8 +139,19 @@
       confirmPaste: "Confirm multi-line paste",
       pasteSummary: "Paste {lines} lines into the active terminal?",
       clipboardDenied: "Clipboard access was denied by the browser.",
+      remoteClipboardDenied:
+        "The browser still denied clipboard access. Use HTTPS or localhost and allow clipboard access for this site.",
+      remoteClipboardDisabled:
+        "A remote program requested clipboard access. Enable OSC 52 clipboard writes in Settings to allow it.",
+      remoteClipboardRequest: "Remote clipboard request",
+      remoteClipboardSummary:
+        "The browser requires a click before this remote text can be copied.",
+      copyToClipboard: "Copy to clipboard",
       confirmMultilinePaste: "Confirm multi-line paste",
       autoCopySelection: "Automatically copy selected text",
+      allowRemoteClipboard: "Allow remote programs to write to the browser clipboard (OSC 52)",
+      remoteClipboardHint:
+        "Required for Herdr copy over SSH. Only enable it for remote hosts you trust.",
       controlCharsWarning: "Warning: the content contains control characters.",
       host: "Host",
       port: "Port",
@@ -280,8 +291,17 @@
       confirmPaste: "确认多行粘贴",
       pasteSummary: "是否将 {lines} 行内容粘贴到当前终端？",
       clipboardDenied: "浏览器拒绝了剪贴板访问。",
+      remoteClipboardDenied:
+        "浏览器仍然拒绝剪贴板访问。请使用 HTTPS 或 localhost，并允许此站点访问剪贴板。",
+      remoteClipboardDisabled:
+        "远程程序请求写入剪贴板。请在设置中开启 OSC 52 剪贴板写入。",
+      remoteClipboardRequest: "远程剪贴板请求",
+      remoteClipboardSummary: "浏览器要求点击按钮后才能复制这段远程文本。",
+      copyToClipboard: "复制到剪贴板",
       confirmMultilinePaste: "粘贴多行内容前确认",
       autoCopySelection: "选中文字后自动复制",
+      allowRemoteClipboard: "允许远程程序写入浏览器剪贴板（OSC 52）",
+      remoteClipboardHint: "Herdr 通过 SSH 复制需要开启；仅对可信远程主机启用。",
       controlCharsWarning: "警告：粘贴内容包含控制字符。",
       host: "主机",
       port: "端口",
@@ -455,6 +475,7 @@
     cursorBlink: $("setting-cursor-blink"),
     confirmPasteSetting: $("setting-confirm-paste"),
     autoCopy: $("setting-auto-copy"),
+    allowRemoteClipboard: $("setting-allow-remote-clipboard"),
     stack: $("terminal-stack"),
     error: $("term-error"),
     errorText: $("term-error-text"),
@@ -482,6 +503,10 @@
     pasteSummary: $("paste-summary"),
     pastePreview: $("paste-preview"),
     confirmPaste: $("confirm-paste-btn"),
+    remoteClipboardModal: $("remote-clipboard-modal"),
+    remoteClipboardSummary: $("remote-clipboard-summary"),
+    remoteClipboardPreview: $("remote-clipboard-preview"),
+    confirmRemoteClipboard: $("confirm-remote-clipboard-btn"),
   };
   let uiConfig = {},
     credentials = [],
@@ -493,7 +518,8 @@
   const groups = new Map();
   let activeGroupId = null;
   let contextSession = null,
-    pendingPaste = "";
+    pendingPaste = "",
+    pendingRemoteClipboard = null;
   let settingsSnapshot = null;
   function defaults() {
     const light = matchMedia?.("(prefers-color-scheme: light)").matches;
@@ -507,6 +533,7 @@
       cursorBlink: true,
       confirmMultilinePaste: true,
       autoCopySelection: false,
+      allowRemoteClipboard: false,
       language: navigator.language.toLowerCase().startsWith("zh")
         ? "zh-CN"
         : "en",
@@ -546,6 +573,7 @@
         cursorBlink: settings.cursorBlink,
         confirmMultilinePaste: settings.confirmMultilinePaste,
         autoCopySelection: settings.autoCopySelection,
+        allowRemoteClipboard: settings.allowRemoteClipboard,
         language: settings.language,
         panelWidth: settings.panelWidth,
         panelCollapsed: !!settings.panelCollapsed,
@@ -719,6 +747,7 @@
       e.connectionModal.classList.contains("hidden") &&
       e.settingsModal.classList.contains("hidden") &&
       e.pasteModal.classList.contains("hidden") &&
+      e.remoteClipboardModal.classList.contains("hidden") &&
       e.shortcutsModal.classList.contains("hidden")
     )
       document.body.classList.remove("modal-open");
@@ -877,6 +906,7 @@
     e.cursorBlink.checked = settings.cursorBlink;
     e.confirmPasteSetting.checked = settings.confirmMultilinePaste;
     e.autoCopy.checked = settings.autoCopySelection;
+    e.allowRemoteClipboard.checked = settings.allowRemoteClipboard;
     applyPanelLayout();
     sessions.forEach(applyTerminalSettings);
   }
@@ -914,6 +944,7 @@
     settings.cursorBlink = e.cursorBlink.checked;
     settings.confirmMultilinePaste = e.confirmPasteSetting.checked;
     settings.autoCopySelection = e.autoCopy.checked;
+    settings.allowRemoteClipboard = e.allowRemoteClipboard.checked;
     applyMode();
     sessions.forEach(applyTerminalSettings);
   }
@@ -1335,6 +1366,7 @@
       fitAddon = new FitAddon.FitAddon();
     term.loadAddon(fitAddon);
     term.open(container);
+    term.parser.registerOscHandler(52, handleRemoteClipboard);
     term.attachCustomKeyEventHandler((ev) => {
       if (ev.type !== "keydown") return true;
       for (const def of SHORTCUT_DEFS) {
@@ -1799,6 +1831,77 @@
     ev.stopPropagation();
     showContextMenuAt(ev, s);
   }
+  const MAX_REMOTE_CLIPBOARD_BYTES = 1024 * 1024;
+  function decodeBase64Text(data) {
+    if (
+      typeof data !== "string" ||
+      data.length > Math.ceil(MAX_REMOTE_CLIPBOARD_BYTES * 4 / 3) + 8
+    )
+      return null;
+    try {
+      const binary = atob(data);
+      if (binary.length > MAX_REMOTE_CLIPBOARD_BYTES) return null;
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      return new TextDecoder().decode(bytes);
+    } catch (_) {
+      return null;
+    }
+  }
+  function stageRemoteClipboard(text) {
+    pendingRemoteClipboard = text;
+    e.remoteClipboardSummary.textContent = t("remoteClipboardSummary");
+    e.remoteClipboardPreview.textContent = text.slice(0, 4000);
+    openModal(e.remoteClipboardModal);
+  }
+  function legacyCopyText(text) {
+    const textarea = document.createElement("textarea");
+    textarea.value = text;
+    textarea.setAttribute("readonly", "");
+    textarea.style.position = "fixed";
+    textarea.style.opacity = "0";
+    document.body.appendChild(textarea);
+    textarea.select();
+    let copied = false;
+    try {
+      copied = document.execCommand("copy");
+    } catch (_) {}
+    textarea.remove();
+    return copied;
+  }
+  async function handleRemoteClipboard(data) {
+    const separator = data.indexOf(";");
+    if (separator < 0) return true;
+    const payload = data.slice(separator + 1);
+    // Do not expose the browser clipboard to remote read requests.
+    if (payload === "?") return true;
+    if (!settings.allowRemoteClipboard) {
+      showError(t("remoteClipboardDisabled"));
+      return true;
+    }
+    const text = decodeBase64Text(payload);
+    if (text === null) return true;
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch (_) {
+      stageRemoteClipboard(text);
+    }
+    return true;
+  }
+  async function copyPendingRemoteClipboard() {
+    if (pendingRemoteClipboard === null) return;
+    const text = pendingRemoteClipboard;
+    try {
+      await navigator.clipboard.writeText(text);
+      pendingRemoteClipboard = null;
+      closeModal(e.remoteClipboardModal);
+    } catch (_) {
+      if (legacyCopyText(text)) {
+        pendingRemoteClipboard = null;
+        closeModal(e.remoteClipboardModal);
+      } else showError(t("remoteClipboardDenied"));
+    }
+  }
   async function copySelection(s) {
     if (!s?.term.hasSelection()) return;
     try {
@@ -2048,13 +2151,17 @@
   });
   e.settingsBtn.addEventListener("click", openSettings);
   e.settingsConfirm.addEventListener("click", confirmSettings);
+  e.confirmRemoteClipboard.addEventListener("click", copyPendingRemoteClipboard);
   document.querySelectorAll("[data-close-modal]").forEach((n) =>
     n.addEventListener("click", () => {
       const which = n.dataset.closeModal;
       if (which === "settings") cancelSettings();
       else if (which === "connection") closeModal(e.connectionModal);
       else if (which === "paste") closeModal(e.pasteModal);
-      else if (which === "shortcuts") closeModal(e.shortcutsModal);
+      else if (which === "remote-clipboard") {
+        pendingRemoteClipboard = null;
+        closeModal(e.remoteClipboardModal);
+      } else if (which === "shortcuts") closeModal(e.shortcutsModal);
     }),
   );
   function anyModalOpen() {
@@ -2062,6 +2169,7 @@
       !e.settingsModal.classList.contains("hidden") ||
       !e.connectionModal.classList.contains("hidden") ||
       !e.pasteModal.classList.contains("hidden") ||
+      !e.remoteClipboardModal.classList.contains("hidden") ||
       !e.shortcutsModal.classList.contains("hidden")
     );
   }
@@ -2124,6 +2232,8 @@
       closeModal(e.connectionModal);
       if (!e.settingsModal.classList.contains("hidden")) cancelSettings();
       closeModal(e.pasteModal);
+      pendingRemoteClipboard = null;
+      closeModal(e.remoteClipboardModal);
       closeModal(e.shortcutsModal);
       closeThemePicker();
       closeLangMenus();
@@ -2241,9 +2351,14 @@
     else settingsChanged();
   });
   e.customFont.addEventListener("input", settingsChanged);
-  [e.fontSize, e.lineHeight, e.cursorBlink, e.confirmPasteSetting, e.autoCopy].forEach(
-    (n) => n.addEventListener("change", settingsChanged),
-  );
+  [
+    e.fontSize,
+    e.lineHeight,
+    e.cursorBlink,
+    e.confirmPasteSetting,
+    e.autoCopy,
+    e.allowRemoteClipboard,
+  ].forEach((n) => n.addEventListener("change", settingsChanged));
   if (e.themePickerBtn)
     e.themePickerBtn.addEventListener("click", (ev) => {
       ev.preventDefault();

@@ -965,6 +965,10 @@ body.fullscreen-mode .terminal-view {
   margin-top: 0.35rem;
   line-height: 1.35;
 }
+.remote-clipboard-hint {
+  margin-top: -0.65rem;
+  line-height: 1.35;
+}
 .remember-row {
   margin: 0.2rem 0 0.85rem;
 }

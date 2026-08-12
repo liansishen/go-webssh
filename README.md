@@ -28,6 +28,7 @@
 - 断线自动重连最多 5 次；可选 tmux 恢复远端会话
 - 右键菜单：复制、粘贴、全选、清屏、分屏、关闭窗格（含快捷键提示）
 - 安全粘贴确认（多行 / 控制字符）；`Ctrl+Shift+C/V`（macOS：`Cmd+C/V`）
+- 可选 OSC 52 远程剪贴板写入，支持 Herdr 等终端程序通过 SSH 将复制内容写入浏览器所在设备
 
 ### 界面与主题
 
@@ -58,7 +59,7 @@ curl -fsSL https://raw.githubusercontent.com/liansishen/go-webssh/main/install.s
 可选环境变量：
 
 ```bash
-GOWEBSSH_VERSION=v0.5.11 \
+GOWEBSSH_VERSION=v0.5.12 \
 GOWEBSSH_LISTEN=127.0.0.1:8080 \
 GOWEBSSH_USERNAME=admin \
 GOWEBSSH_ALLOW_PRIVATE_RANGES=false \
@@ -264,6 +265,21 @@ network_policy:
 - 有意避开会关闭浏览器窗口/标签的组合（如 `Ctrl+Shift+W`、`Ctrl+PageUp/Down`）
 - 顶栏快捷键面板只读，当前版本不可自定义
 
+## 远程程序剪贴板（OSC 52）
+
+Herdr 在 SSH 会话中复制文本时会输出 OSC 52 序列，请求最外层终端写入系统剪贴板。浏览器默认不会处理该序列，因此需要在 **设置** 中开启“允许远程程序写入浏览器剪贴板（OSC 52）”。
+
+- 该能力默认关闭，只应对可信远程主机开启；远程程序能够覆盖浏览器所在设备的文本剪贴板。
+- WebSSH 只处理远程写入请求，不响应远程读取剪贴板的请求。
+- 浏览器剪贴板 API 通常要求 HTTPS 或 `localhost`。如果后台写入被浏览器拦截，页面会显示内容预览，并要求点击“复制到剪贴板”完成复制。
+- 当前限制为每次最多 1 MiB 的解码后文本；无效或超限的 OSC 52 内容会被忽略。
+
+Herdr 中选中文本并执行复制后，内容会沿以下路径传递：
+
+```text
+Herdr -> OSC 52 -> SSH PTY -> Go WebSSH -> xterm.js -> 浏览器剪贴板
+```
+
 ## 自定义终端主题
 
 使用 xterm.js `ITheme` JSON（颜色表），与页面日夜间外观无关。
@@ -431,6 +447,10 @@ sudo ./scripts/deploy-test.sh
 
 **私钥安全吗？**  
 会经过服务端内存。请使用 HTTPS、强登录密码、受信服务器与专用 key。需要持久化时再用加密凭据库，并知悉改密影响。
+
+**为什么 Herdr 中复制的文本没有进入本机剪贴板？**
+
+Herdr 在 SSH 场景使用 OSC 52 传递复制内容。请在 WebSSH 设置中开启 OSC 52 远程剪贴板写入，并使用 HTTPS 或 `localhost` 访问页面；如果浏览器不允许后台写入，请在弹出的预览框中点击“复制到剪贴板”。
 
 **为什么不用每台目标一个 ttyd？**  
 本项目单进程多会话，浏览器指定目标与私钥即可连接不同主机。
