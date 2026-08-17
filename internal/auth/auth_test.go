@@ -21,7 +21,6 @@ func TestLoginLogoutSession(t *testing.T) {
 		Store:         store,
 		TTL:           time.Hour,
 		SessionSecret: "test-session-secret",
-		VaultSalt:     []byte("0123456789abcdef"),
 	}
 
 	rr := httptest.NewRecorder()
@@ -31,8 +30,7 @@ func TestLoginLogoutSession(t *testing.T) {
 	if err := a.Login(rr, "admin", "s3cret"); err != nil {
 		t.Fatalf("login: %v", err)
 	}
-	res := rr.Result()
-	cookies := res.Cookies()
+	cookies := rr.Result().Cookies()
 	if len(cookies) == 0 {
 		t.Fatal("expected session cookie")
 	}
@@ -47,14 +45,6 @@ func TestLoginLogoutSession(t *testing.T) {
 	if !ok || info.Username != "admin" {
 		t.Fatalf("session=%+v ok=%v", info, ok)
 	}
-	if len(info.VaultKey) != 0 {
-		t.Fatal("regular session lookup must not expose vault key")
-	}
-	vaultInfo, ok := a.VaultSessionFromRequest(req)
-	if !ok || len(vaultInfo.VaultKey) != 32 {
-		t.Fatal("vault session key missing")
-	}
-	zero(vaultInfo.VaultKey)
 
 	tampered := *c
 	tampered.Value += "x"
@@ -87,8 +77,7 @@ func TestPlaintextPassword(t *testing.T) {
 }
 
 func TestRememberLoginLastsThirtyDays(t *testing.T) {
-	salt := []byte("0123456789abcdef")
-	a := &Authenticator{Username: "admin", Password: "plain", Store: NewStore(time.Hour), TTL: time.Hour, SessionSecret: "test-session-secret", VaultSalt: salt}
+	a := &Authenticator{Username: "admin", Password: "plain", Store: NewStore(time.Hour), TTL: time.Hour, SessionSecret: "test-session-secret"}
 	rr := httptest.NewRecorder()
 	if err := a.Login(rr, "admin", "plain", true); err != nil {
 		t.Fatal(err)
@@ -98,17 +87,13 @@ func TestRememberLoginLastsThirtyDays(t *testing.T) {
 		t.Fatalf("remembered cookie lifetime=%s", remaining)
 	}
 
-	// A fresh authenticator/store simulates a complete server restart. The
-	// encrypted persistent cookie must restore both authentication and the
-	// password-derived vault key without relying on the old in-memory store.
-	restarted := &Authenticator{Username: "admin", Password: "plain", Store: NewStore(time.Hour), TTL: time.Hour, SessionSecret: "test-session-secret", VaultSalt: salt}
+	restarted := &Authenticator{Username: "admin", Password: "changed", Store: NewStore(time.Hour), TTL: time.Hour, SessionSecret: "test-session-secret"}
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	req.AddCookie(rr.Result().Cookies()[0])
-	info, ok := restarted.VaultSessionFromRequest(req)
-	if !ok || info.Username != "admin" || len(info.VaultKey) != 32 {
+	info, ok := restarted.SessionFromRequest(req)
+	if !ok || info.Username != "admin" {
 		t.Fatalf("persistent session after restart=%+v ok=%v", info, ok)
 	}
-	zero(info.VaultKey)
 
 	tampered := *rr.Result().Cookies()[0]
 	tampered.Value += "x"

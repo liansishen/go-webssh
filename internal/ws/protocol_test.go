@@ -27,7 +27,7 @@ func TestEncodeDecodeMessage(t *testing.T) {
 }
 
 func TestConnectDataRoundTrip(t *testing.T) {
-	cd := ConnectData{Host: "h", Port: 22, Username: "u", PrivateKey: "k", Cols: 80, Rows: 24}
+	cd := ConnectData{Host: "h", Port: 22, Username: "u", PrivateKey: "k", Cols: 80, Rows: 24, UseHerdr: true, HerdrSession: "gowebssh-test"}
 	b, err := EncodeMessage("connect", cd)
 	if err != nil {
 		t.Fatal(err)
@@ -40,7 +40,7 @@ func TestConnectDataRoundTrip(t *testing.T) {
 	if err := json.Unmarshal(m.Data, &out); err != nil {
 		t.Fatal(err)
 	}
-	if out.Host != "h" || out.Port != 22 || out.Username != "u" {
+	if out.Host != "h" || out.Port != 22 || out.Username != "u" || !out.UseHerdr || out.HerdrSession != "gowebssh-test" {
 		t.Fatalf("%+v", out)
 	}
 }

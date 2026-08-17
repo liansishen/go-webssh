@@ -21,7 +21,7 @@ import (
 	"github.com/liansishen/go-webssh/web"
 )
 
-var version = "0.5.12"
+var version = "0.5.13"
 
 func main() {
 	var (
@@ -55,12 +55,26 @@ func main() {
 	logger := logging.New(cfg.Logging.Level)
 	var credentialStore *vault.Store
 	if cfg.Credentials.Enabled {
-		credentialStore, err = vault.Open(cfg.Credentials.DBFile)
+		credentialStore, err = vault.Open(cfg.Credentials.DBFile, vault.OpenOptions{
+			KeyFile: cfg.Credentials.KeyFile,
+			KeyHex:  cfg.Credentials.KeyHex,
+		})
 		if err != nil {
 			logger.Error("credential database error", "err", err)
 			os.Exit(1)
 		}
 		defer credentialStore.Close()
+		logger.Warn("credential database and master key must be backed up together", "database", cfg.Credentials.DBFile, "key_file", cfg.Credentials.KeyFile)
+		if cfg.UsesPlaintextPassword() {
+			migrated, remaining, migrateErr := credentialStore.MigrateLegacyFromPassword([]byte(cfg.Auth.Password))
+			if migrateErr != nil {
+				logger.Error("legacy credential migration failed", "err", migrateErr)
+				os.Exit(1)
+			}
+			if migrated > 0 || remaining > 0 {
+				logger.Info("legacy credential migration", "migrated", migrated, "remaining", remaining)
+			}
+		}
 	}
 
 	if cfg.UsesPlaintextPassword() {
@@ -80,10 +94,6 @@ func main() {
 		TTL:           cfg.Auth.SessionTTL,
 		SessionSecret: cfg.Server.SessionSecret,
 	}
-	if credentialStore != nil {
-		authenticator.VaultSalt = credentialStore.Salt()
-	}
-
 	policy, err := security.NewNetworkPolicy(cfg.NetworkPolicy.AllowPrivateRanges, cfg.NetworkPolicy.Deny, cfg.NetworkPolicy.Allow)
 	if err != nil {
 		logger.Error("network policy error", "err", err)

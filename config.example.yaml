@@ -32,9 +32,10 @@ logging:
   level: "info"
 
 credentials:
-  # Credentials are encrypted with a key derived from the login password.
+  # The database and master key file must be backed up together.
   enabled: true
   db_file: "./credentials.db"
+  key_file: "./credentials.db.key"
 
 ui:
   # Local directory of *.json terminal themes (filename = theme id).

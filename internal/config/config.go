@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
@@ -56,6 +57,8 @@ type LoggingConfig struct {
 type CredentialsConfig struct {
 	Enabled bool   `yaml:"enabled"`
 	DBFile  string `yaml:"db_file"`
+	KeyFile string `yaml:"key_file"`
+	KeyHex  string `yaml:"-"`
 }
 
 type UIConfig struct {
@@ -116,6 +119,7 @@ type rawConfig struct {
 	Credentials   struct {
 		Enabled *bool  `yaml:"enabled"`
 		DBFile  string `yaml:"db_file"`
+		KeyFile string `yaml:"key_file"`
 	} `yaml:"credentials"`
 	UI struct {
 		ThemesDir string `yaml:"themes_dir"`
@@ -237,6 +241,9 @@ func applyRaw(cfg *Config, raw *rawConfig) {
 	if raw.Credentials.DBFile != "" {
 		cfg.Credentials.DBFile = raw.Credentials.DBFile
 	}
+	if raw.Credentials.KeyFile != "" {
+		cfg.Credentials.KeyFile = raw.Credentials.KeyFile
+	}
 	if raw.Credentials.Enabled != nil {
 		cfg.Credentials.Enabled = *raw.Credentials.Enabled
 	}
@@ -276,6 +283,12 @@ func ApplyEnv(cfg *Config) {
 	}
 	if v := os.Getenv("GOWEBSSH_LOG_LEVEL"); v != "" {
 		cfg.Logging.Level = v
+	}
+	if v := os.Getenv("GOWEBSSH_CREDENTIALS_KEY_FILE"); v != "" {
+		cfg.Credentials.KeyFile = v
+	}
+	if v := os.Getenv("GOWEBSSH_CREDENTIALS_KEY"); v != "" {
+		cfg.Credentials.KeyHex = v
 	}
 	if v := os.Getenv("GOWEBSSH_THEMES_DIR"); v != "" {
 		cfg.UI.ThemesDir = v
@@ -325,8 +338,19 @@ func (c *Config) Validate() error {
 	if c.SSH.IdleTimeout <= 0 {
 		c.SSH.IdleTimeout = 30 * time.Minute
 	}
-	if c.Credentials.Enabled && strings.TrimSpace(c.Credentials.DBFile) == "" {
-		return errors.New("credentials.db_file is required when credential storage is enabled")
+	if c.Credentials.Enabled {
+		if strings.TrimSpace(c.Credentials.DBFile) == "" {
+			return errors.New("credentials.db_file is required when credential storage is enabled")
+		}
+		if strings.TrimSpace(c.Credentials.KeyFile) == "" {
+			c.Credentials.KeyFile = c.Credentials.DBFile + ".key"
+		}
+		if c.Credentials.KeyHex != "" {
+			decoded, err := hex.DecodeString(strings.TrimSpace(c.Credentials.KeyHex))
+			if err != nil || len(decoded) != 32 {
+				return errors.New("GOWEBSSH_CREDENTIALS_KEY must be exactly 64 hexadecimal characters")
+			}
+		}
 	}
 	return nil
 }

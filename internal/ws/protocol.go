@@ -8,24 +8,27 @@ type Message struct {
 }
 
 type ConnectData struct {
-	Host        string `json:"host"`
-	Port        int    `json:"port"`
-	Username    string `json:"username"`
-	PrivateKey  string `json:"privateKey"`
-	Passphrase  string `json:"passphrase"`
-	Term        string `json:"term"`
-	Cols        int    `json:"cols"`
-	Rows        int    `json:"rows"`
-	UseTmux     bool   `json:"useTmux"`
-	TmuxSession string `json:"tmuxSession,omitempty"`
+	Host          string `json:"host"`
+	Port          int    `json:"port"`
+	Username      string `json:"username"`
+	PrivateKey    string `json:"privateKey"`
+	Passphrase    string `json:"passphrase"`
+	Term          string `json:"term"`
+	Cols          int    `json:"cols"`
+	Rows          int    `json:"rows"`
+	UseHerdr      bool   `json:"useHerdr"`
+	LegacyUseTmux bool   `json:"useTmux"`
+	HerdrSession  string `json:"herdrSession,omitempty"`
+	TmuxSession   string `json:"tmuxSession,omitempty"`
 }
 
 type ConnectedData struct {
-	SessionID   string `json:"sessionId"`
-	Host        string `json:"host"`
-	Port        int    `json:"port"`
-	Username    string `json:"username"`
-	TmuxSession string `json:"tmuxSession,omitempty"`
+	SessionID    string `json:"sessionId"`
+	Host         string `json:"host"`
+	Port         int    `json:"port"`
+	Username     string `json:"username"`
+	HerdrSession string `json:"herdrSession,omitempty"`
+	TmuxSession  string `json:"tmuxSession,omitempty"`
 }
 
 type ResizeData struct {

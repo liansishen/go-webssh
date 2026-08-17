@@ -127,6 +127,7 @@ logging:
 credentials:
   enabled: true
   db_file: "${DATA_DIR}/credentials.db"
+  key_file: "${DATA_DIR}/credentials.db.key"
 
 ui:
   themes_dir: "${DATA_DIR}/themes"

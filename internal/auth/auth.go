@@ -15,7 +15,6 @@ import (
 	"sync"
 	"time"
 
-	"golang.org/x/crypto/argon2"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -26,7 +25,6 @@ const persistentTokenPrefix = "p1."
 type persistentSession struct {
 	Username string `json:"u"`
 	Expires  int64  `json:"e"`
-	VaultKey []byte `json:"k,omitempty"`
 }
 
 var (
@@ -37,7 +35,6 @@ var (
 type SessionInfo struct {
 	Username  string
 	ExpiresAt time.Time
-	VaultKey  []byte
 }
 
 type Store struct {
@@ -66,7 +63,6 @@ func (s *Store) cleanupLoop() {
 		now := time.Now()
 		for k, v := range s.sessions {
 			if now.After(v.ExpiresAt) {
-				zero(v.VaultKey)
 				delete(s.sessions, k)
 			}
 		}
@@ -74,7 +70,7 @@ func (s *Store) cleanupLoop() {
 	}
 }
 
-func (s *Store) Create(username string, vaultKey []byte, ttl ...time.Duration) (token string, expires time.Time, err error) {
+func (s *Store) Create(username string, ttl ...time.Duration) (token string, expires time.Time, err error) {
 	b := make([]byte, 32)
 	if _, err = rand.Read(b); err != nil {
 		return "", time.Time{}, err
@@ -86,7 +82,7 @@ func (s *Store) Create(username string, vaultKey []byte, ttl ...time.Duration) (
 	}
 	expires = time.Now().Add(duration)
 	s.mu.Lock()
-	s.sessions[token] = SessionInfo{Username: username, ExpiresAt: expires, VaultKey: append([]byte(nil), vaultKey...)}
+	s.sessions[token] = SessionInfo{Username: username, ExpiresAt: expires}
 	s.mu.Unlock()
 	return token, expires, nil
 }
@@ -102,15 +98,11 @@ func (s *Store) Get(token string) (SessionInfo, bool) {
 		delete(s.sessions, token)
 		return SessionInfo{}, false
 	}
-	info.VaultKey = append([]byte(nil), info.VaultKey...)
 	return info, true
 }
 
 func (s *Store) Delete(token string) {
 	s.mu.Lock()
-	if info, ok := s.sessions[token]; ok {
-		zero(info.VaultKey)
-	}
 	delete(s.sessions, token)
 	s.mu.Unlock()
 }
@@ -123,12 +115,10 @@ type Authenticator struct {
 	SecureCookie  bool
 	TTL           time.Duration
 	SessionSecret string
-	VaultSalt     []byte
 }
 
 func (a *Authenticator) Authenticate(username, password string) error {
 	if subtle.ConstantTimeCompare([]byte(username), []byte(a.Username)) != 1 {
-		// still compare password path to reduce timing differences a bit
 		_ = a.checkPassword(password)
 		return ErrInvalidCredentials
 	}
@@ -152,20 +142,15 @@ func (a *Authenticator) Login(w http.ResponseWriter, username, password string, 
 	if err := a.Authenticate(username, password); err != nil {
 		return err
 	}
-	var vaultKey []byte
-	if len(a.VaultSalt) > 0 {
-		vaultKey = argon2.IDKey([]byte(password), a.VaultSalt, 3, 64*1024, 2, 32)
-	}
-	defer zero(vaultKey)
 	var cookieValue string
 	var expires time.Time
 	var err error
 	if len(remember) > 0 && remember[0] {
 		expires = time.Now().Add(30 * 24 * time.Hour)
-		cookieValue, err = a.sealPersistentSession(SessionInfo{Username: username, ExpiresAt: expires, VaultKey: vaultKey})
+		cookieValue, err = a.sealPersistentSession(SessionInfo{Username: username, ExpiresAt: expires})
 	} else {
 		var token string
-		token, expires, err = a.Store.Create(username, vaultKey, a.TTL)
+		token, expires, err = a.Store.Create(username, a.TTL)
 		cookieValue = a.signedToken(token)
 	}
 	if err != nil {
@@ -182,12 +167,6 @@ func (a *Authenticator) Login(w http.ResponseWriter, username, password string, 
 		MaxAge:   int(time.Until(expires).Seconds()),
 	})
 	return nil
-}
-
-func zero(b []byte) {
-	for i := range b {
-		b[i] = 0
-	}
 }
 
 func (a *Authenticator) Logout(w http.ResponseWriter, r *http.Request) {
@@ -209,19 +188,6 @@ func (a *Authenticator) Logout(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *Authenticator) SessionFromRequest(r *http.Request) (SessionInfo, bool) {
-	info, ok := a.sessionFromRequest(r)
-	if ok {
-		zero(info.VaultKey)
-		info.VaultKey = nil
-	}
-	return info, ok
-}
-
-func (a *Authenticator) VaultSessionFromRequest(r *http.Request) (SessionInfo, bool) {
-	return a.sessionFromRequest(r)
-}
-
-func (a *Authenticator) sessionFromRequest(r *http.Request) (SessionInfo, bool) {
 	c, err := r.Cookie(CookieName)
 	if err != nil || c.Value == "" {
 		return SessionInfo{}, false
@@ -250,7 +216,7 @@ func (a *Authenticator) sealPersistentSession(info SessionInfo) (string, error) 
 	if err != nil {
 		return "", err
 	}
-	payload, err := json.Marshal(persistentSession{Username: info.Username, Expires: info.ExpiresAt.Unix(), VaultKey: info.VaultKey})
+	payload, err := json.Marshal(persistentSession{Username: info.Username, Expires: info.ExpiresAt.Unix()})
 	if err != nil {
 		return "", err
 	}
@@ -278,10 +244,9 @@ func (a *Authenticator) openPersistentSession(value string) (SessionInfo, bool) 
 	}
 	var session persistentSession
 	if json.Unmarshal(payload, &session) != nil || session.Username != a.Username || session.Expires <= time.Now().Unix() {
-		zero(session.VaultKey)
 		return SessionInfo{}, false
 	}
-	return SessionInfo{Username: session.Username, ExpiresAt: time.Unix(session.Expires, 0), VaultKey: session.VaultKey}, true
+	return SessionInfo{Username: session.Username, ExpiresAt: time.Unix(session.Expires, 0)}, true
 }
 
 func (a *Authenticator) signedToken(token string) string {

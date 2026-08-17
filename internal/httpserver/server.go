@@ -65,6 +65,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/config/ui", s.handleUIConfig)
 	s.mux.HandleFunc("GET /api/credentials", s.handleCredentialList)
 	s.mux.HandleFunc("POST /api/credentials", s.handleCredentialPut)
+	s.mux.HandleFunc("POST /api/credentials/migrate", s.handleCredentialMigrate)
 	s.mux.HandleFunc("GET /api/credentials/{id}", s.handleCredentialGet)
 	s.mux.HandleFunc("DELETE /api/credentials/{id}", s.handleCredentialDelete)
 	s.mux.Handle("GET /api/ws/ssh", s.ws)
@@ -213,14 +214,15 @@ type credentialSummary struct {
 	Port          int       `json:"port"`
 	Username      string    `json:"username"`
 	Term          string    `json:"term"`
-	UseTmux       bool      `json:"useTmux"`
+	UseHerdr      bool      `json:"useHerdr"`
+	LegacyUseTmux bool      `json:"useTmux"`
 	HasPrivateKey bool      `json:"hasPrivateKey"`
 	HasPassphrase bool      `json:"hasPassphrase"`
 	UpdatedAt     time.Time `json:"updatedAt"`
 }
 
 func (s *Server) credentialSession(w http.ResponseWriter, r *http.Request) (auth.SessionInfo, bool) {
-	info, ok := s.auth.VaultSessionFromRequest(r)
+	info, ok := s.auth.SessionFromRequest(r)
 	if !ok {
 		writeErr(w, http.StatusUnauthorized, "AUTH_REQUIRED", "authentication required")
 		return auth.SessionInfo{}, false
@@ -237,26 +239,23 @@ func (s *Server) handleCredentialList(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	defer clearBytes(info.VaultKey)
-	items, removed, err := s.vault.ListSummaries(info.Username, info.VaultKey)
+	items, unmigrated, err := s.vault.ListSummaries(info.Username)
 	if err != nil {
 		writeErr(w, http.StatusUnprocessableEntity, "VAULT_DECRYPT_FAILED", "credential vault could not be decrypted")
 		return
 	}
 	summaries := make([]credentialSummary, 0, len(items))
 	for _, item := range items {
-		summaries = append(summaries, credentialSummary{ID: item.ID, Name: item.Name, Host: item.Host, Port: item.Port, Username: item.Username, Term: item.Term, UseTmux: item.UseTmux, HasPrivateKey: item.HasPrivateKey, HasPassphrase: item.HasPassphrase, UpdatedAt: item.UpdatedAt})
+		summaries = append(summaries, credentialSummary{ID: item.ID, Name: item.Name, Host: item.Host, Port: item.Port, Username: item.Username, Term: item.Term, UseHerdr: item.UseHerdr, LegacyUseTmux: item.UseHerdr, HasPrivateKey: item.HasPrivateKey, HasPassphrase: item.HasPassphrase, UpdatedAt: item.UpdatedAt})
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"credentials": summaries, "removedCredentials": removed})
+	writeJSON(w, http.StatusOK, map[string]any{"credentials": summaries, "removedCredentials": 0, "unmigratedCredentials": unmigrated})
 }
 
 func (s *Server) handleCredentialGet(w http.ResponseWriter, r *http.Request) {
-	info, ok := s.credentialSession(w, r)
-	if !ok {
+	if _, ok := s.credentialSession(w, r); !ok {
 		return
 	}
-	defer clearBytes(info.VaultKey)
-	item, err := s.vault.Get(info.VaultKey, r.PathValue("id"))
+	item, err := s.vault.Get(r.PathValue("id"))
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			writeErr(w, http.StatusNotFound, "NOT_FOUND", "credential not found")
@@ -273,7 +272,6 @@ func (s *Server) handleCredentialPut(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	defer clearBytes(info.VaultKey)
 	body, err := io.ReadAll(io.LimitReader(r.Body, 256*1024+1))
 	if err != nil || len(body) > 256*1024 {
 		writeErr(w, http.StatusBadRequest, "BAD_REQUEST", "credential is too large")
@@ -298,13 +296,45 @@ func (s *Server) handleCredentialPut(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "BAD_REQUEST", "credential is too large")
 		return
 	}
-	saved, err := s.vault.PutForUser(info.VaultKey, info.Username, item)
+	saved, err := s.vault.PutForUser(info.Username, item)
 	item.PrivateKey, item.Passphrase = "", ""
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to save credential")
 		return
 	}
-	writeJSON(w, http.StatusOK, credentialSummary{ID: saved.ID, Name: saved.Name, Host: saved.Host, Port: saved.Port, Username: saved.Username, Term: saved.Term, UseTmux: saved.UseTmux, HasPrivateKey: true, HasPassphrase: saved.Passphrase != "", UpdatedAt: saved.UpdatedAt})
+	writeJSON(w, http.StatusOK, credentialSummary{ID: saved.ID, Name: saved.Name, Host: saved.Host, Port: saved.Port, Username: saved.Username, Term: saved.Term, UseHerdr: saved.UseHerdr, LegacyUseTmux: saved.UseHerdr, HasPrivateKey: true, HasPassphrase: saved.Passphrase != "", UpdatedAt: saved.UpdatedAt})
+}
+
+func (s *Server) handleCredentialMigrate(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.credentialSession(w, r); !ok {
+		return
+	}
+	body, err := io.ReadAll(io.LimitReader(r.Body, 16*1024+1))
+	if err != nil || len(body) > 16*1024 {
+		writeErr(w, http.StatusBadRequest, "BAD_REQUEST", "migration request is too large")
+		return
+	}
+	defer clearBytes(body)
+	var req struct {
+		Password string `json:"password"`
+	}
+	if json.Unmarshal(body, &req) != nil || req.Password == "" {
+		writeErr(w, http.StatusBadRequest, "BAD_REQUEST", "earlier login password is required")
+		return
+	}
+	password := []byte(req.Password)
+	req.Password = ""
+	migrated, remaining, err := s.vault.MigrateLegacyFromPassword(password)
+	clearBytes(password)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "VAULT_MIGRATE_FAILED", "credential migration failed")
+		return
+	}
+	if migrated == 0 && remaining > 0 {
+		writeErr(w, http.StatusUnprocessableEntity, "VAULT_MIGRATE_FAILED", "the supplied password could not decrypt older credentials")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "migrated": migrated, "remaining": remaining})
 }
 
 func (s *Server) handleCredentialDelete(w http.ResponseWriter, r *http.Request) {

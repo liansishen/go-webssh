@@ -25,7 +25,7 @@
 - 私钥登录（ed25519 / RSA / ECDSA，支持 passphrase）
 - WebSocket 交互式终端（xterm.js + fit）
 - 多连接标签；每个标签最多 4 个 SSH 窗格，支持向右/向下分屏与拖动分隔线
-- 断线自动重连最多 5 次；可选 tmux 恢复远端会话
+- 断线自动重连最多 5 次；可选 Herdr 恢复远端会话
 - 右键菜单：复制、粘贴、全选、清屏、分屏、关闭窗格（含快捷键提示）
 - 安全粘贴确认（多行 / 控制字符）；`Ctrl+Shift+C/V`（macOS：`Cmd+C/V`）
 - 可选 OSC 52 远程剪贴板写入，支持 Herdr 等终端程序通过 SSH 将复制内容写入浏览器所在设备
@@ -42,7 +42,7 @@
 
 - Host Key：`known-hosts`（默认）或 `insecure-ignore`
 - Network Policy：默认拒绝 loopback、link-local、metadata、私网（可配置）
-- 可选 AES-256-GCM 加密凭据库（登录密码 + Argon2id 派生密钥）
+- 可选 AES-256-GCM 加密凭据库（独立随机主密钥）
 - 前端资源嵌入单二进制
 - Linux 目标机 CPU / 内存 / 根分区磁盘 / 网络 / 负载 / 运行时间与 WebSocket 延迟监控
 
@@ -59,7 +59,7 @@ curl -fsSL https://raw.githubusercontent.com/liansishen/go-webssh/main/install.s
 可选环境变量：
 
 ```bash
-GOWEBSSH_VERSION=v0.5.12 \
+GOWEBSSH_VERSION=v0.5.13 \
 GOWEBSSH_LISTEN=127.0.0.1:8080 \
 GOWEBSSH_USERNAME=admin \
 GOWEBSSH_ALLOW_PRIVATE_RANGES=false \
@@ -125,6 +125,7 @@ logging:
 credentials:
   enabled: true
   db_file: "./credentials.db"
+  key_file: "./credentials.db.key"
 
 ui:
   themes_dir: "./themes"
@@ -154,6 +155,8 @@ ui:
 | `GOWEBSSH_ALLOW_PRIVATE_RANGES` | `true` 允许 RFC1918 等私网 |
 | `GOWEBSSH_SECURE_COOKIE` | `true` 设置 Secure cookie |
 | `GOWEBSSH_LOG_LEVEL` | `debug` / `info` / `warn` / `error` |
+| `GOWEBSSH_CREDENTIALS_KEY_FILE` | 凭据主密钥文件路径（默认 `<db_file>.key`） |
+| `GOWEBSSH_CREDENTIALS_KEY` | 64 位十六进制凭据主密钥，优先于密钥文件 |
 | `GOWEBSSH_THEMES_DIR` | 终端主题 JSON 目录（默认 `./themes`） |
 
 ## 生成 bcrypt password_hash
@@ -235,18 +238,18 @@ network_policy:
 
 启用 `credentials.enabled` 后，可在连接页**主动保存**主机、私钥与 passphrase：
 
-- 登录密码经 Argon2id + 数据库随机 salt 派生 Vault Key
-- 凭据使用 AES-256-GCM 加密后写入 bbolt
-- 保持登录时，Vault Key 随会话加密封装在 HttpOnly Cookie 中，服务重启后仍可解密
-- 数据库权限 `0600`，库内不存明文主机/用户名/私钥/passphrase
-- **修改 Web 登录密码后，旧密码加密的凭据无法自动解密**；改密前请备份或准备重新保存
+- 服务首次启动时生成独立的 256 位随机主密钥，默认保存到 `<db_file>.key`
+- 凭据使用 AES-256-GCM 加密后写入 bbolt；数据库记录带版本标记
+- 登录密码只用于 Web 身份认证，修改登录密码不会影响已保存凭据
+- 主密钥文件和数据库权限均为 `0600`，必须成对备份；丢失主密钥后无法恢复凭据
+- 升级前由登录密码派生密钥加密的记录会被保留，不再自动删除。明文 `auth.password` 部署会在启动时自动迁移；仅配置 bcrypt 哈希时，前端会提示输入此前的登录密码完成迁移
 
 ## 多连接、重连与监控
 
 - 标签栏 `＋` 打开连接设置；主页可管理已保存凭据
 - 每个标签对应一台服务器，最多 4 个窗格；同标签共享左侧监控数据
 - WebSocket 断开后指数退避重连（约 1、2、4、8、15 秒），最多 5 次
-- 启用 tmux 恢复时使用 `tmux new-session -A`（目标机需安装 tmux）
+- 启用 Herdr 恢复时使用 `herdr session attach <name>` 创建或恢复命名会话（目标机需安装 Herdr）
 - Linux 目标约每 3 秒采集 `/proc` 指标；非 Linux 或不支持时监控显示不可用，不影响终端
 
 ## 键盘快捷键

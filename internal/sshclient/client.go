@@ -13,26 +13,26 @@ import (
 )
 
 type ConnectRequest struct {
-	Host        string
-	Port        int
-	Username    string
-	PrivateKey  string
-	Passphrase  string
-	Term        string
-	Cols        int
-	Rows        int
-	UseTmux     bool
-	TmuxSession string
+	Host         string
+	Port         int
+	Username     string
+	PrivateKey   string
+	Passphrase   string
+	Term         string
+	Cols         int
+	Rows         int
+	UseHerdr     bool
+	HerdrSession string
 }
 
 type Session struct {
-	Client      *ssh.Client
-	Session     *ssh.Session
-	Stdin       io.WriteCloser
-	Stdout      io.Reader
-	Stderr      io.Reader
-	TmuxActive  bool
-	TmuxSession string
+	Client       *ssh.Client
+	Session      *ssh.Session
+	Stdin        io.WriteCloser
+	Stdout       io.Reader
+	Stderr       io.Reader
+	HerdrActive  bool
+	HerdrSession string
 }
 
 type DialConfig struct {
@@ -129,7 +129,7 @@ func Connect(req ConnectRequest, dialCfg DialConfig) (*Session, error) {
 		}
 		return nil, mapDialError(err)
 	}
-	tmuxActive := req.UseTmux && tmuxAvailable(client)
+	herdrActive := req.UseHerdr && herdrAvailable(client)
 
 	sess, err := client.NewSession()
 	if err != nil {
@@ -171,32 +171,32 @@ func Connect(req ConnectRequest, dialCfg DialConfig) (*Session, error) {
 		_ = client.Close()
 		return nil, &CodedError{Code: "SSH_SESSION_FAILED", Message: "failed to start shell"}
 	}
-	if tmuxActive && req.TmuxSession != "" {
-		if _, err := stdin.Write([]byte("tmux new-session -A -s " + req.TmuxSession + "\r")); err != nil {
+	if herdrActive && req.HerdrSession != "" {
+		if _, err := stdin.Write([]byte("herdr session attach " + req.HerdrSession + "\r")); err != nil {
 			_ = sess.Close()
 			_ = client.Close()
-			return nil, &CodedError{Code: "SSH_SESSION_FAILED", Message: "failed to start recoverable tmux session"}
+			return nil, &CodedError{Code: "SSH_SESSION_FAILED", Message: "failed to start recoverable Herdr session"}
 		}
 	}
 
 	return &Session{
-		Client:      client,
-		Session:     sess,
-		Stdin:       stdin,
-		Stdout:      stdout,
-		Stderr:      stderr,
-		TmuxActive:  tmuxActive,
-		TmuxSession: req.TmuxSession,
+		Client:       client,
+		Session:      sess,
+		Stdin:        stdin,
+		Stdout:       stdout,
+		Stderr:       stderr,
+		HerdrActive:  herdrActive,
+		HerdrSession: req.HerdrSession,
 	}, nil
 }
 
-func tmuxAvailable(client *ssh.Client) bool {
+func herdrAvailable(client *ssh.Client) bool {
 	probe, err := client.NewSession()
 	if err != nil {
 		return false
 	}
 	defer probe.Close()
-	return probe.Run("command -v tmux >/dev/null 2>&1") == nil
+	return probe.Run("command -v herdr >/dev/null 2>&1") == nil
 }
 
 func (s *Session) WindowChange(rows, cols int) error {

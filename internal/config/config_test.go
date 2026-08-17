@@ -13,7 +13,10 @@ func TestDefaultAndValidate(t *testing.T) {
 	cfg.Server.SessionSecret = "1234567890123456"
 	cfg.SSH.HostKeyPolicy = "insecure-ignore"
 	if err := cfg.Validate(); err != nil {
-		t.Fatalf("validate: %v", err)
+		t.Fatal(err)
+	}
+	if cfg.Credentials.KeyFile != cfg.Credentials.DBFile+".key" {
+		t.Fatalf("key_file=%q", cfg.Credentials.KeyFile)
 	}
 }
 
@@ -66,6 +69,8 @@ func TestApplyEnvAndFlags(t *testing.T) {
 	t.Setenv("GOWEBSSH_USERNAME", "bob")
 	t.Setenv("GOWEBSSH_PASSWORD", "pw")
 	t.Setenv("GOWEBSSH_SESSION_SECRET", "secret-secret-secret")
+	t.Setenv("GOWEBSSH_CREDENTIALS_KEY_FILE", "/tmp/credentials.key")
+	t.Setenv("GOWEBSSH_CREDENTIALS_KEY", "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
 	ApplyEnv(cfg)
 	ApplyFlags(cfg, "127.0.0.1:19090")
 	if cfg.Server.Listen != "127.0.0.1:19090" {
@@ -73,6 +78,9 @@ func TestApplyEnvAndFlags(t *testing.T) {
 	}
 	if cfg.Auth.Username != "bob" {
 		t.Fatalf("username=%s", cfg.Auth.Username)
+	}
+	if cfg.Credentials.KeyFile != "/tmp/credentials.key" || cfg.Credentials.KeyHex == "" {
+		t.Fatalf("credential key overrides were not applied: %+v", cfg.Credentials)
 	}
 	if err := cfg.Validate(); err != nil {
 		t.Fatal(err)

@@ -2,7 +2,6 @@
 (function () {
   "use strict";
   const STORAGE_KEY = "gowebssh.ui";
-  const NOTICE_KEY = "gowebssh.notices";
   const $ = (id) => document.getElementById(id);
   const IS_MAC = /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent);
   // Avoid Alt (OS/browser rectangular selection) and browser tab shortcuts.
@@ -169,7 +168,7 @@
       clearKey: "Clear private key",
       passphraseOptional: "Passphrase (optional)",
       terminalType: "Terminal type",
-      useTmux: "Recover terminal with tmux after disconnect",
+      useHerdr: "Recover terminal with Herdr after disconnect",
       cancel: "Cancel",
       save: "Save",
       connect: "Connect",
@@ -193,7 +192,7 @@
       delete: "Delete",
       status: "Status",
       updated: "Updated",
-      tmuxRecovery: "tmux recovery",
+      herdrRecovery: "Herdr recovery",
       enabled: "Enabled",
       disabled: "Disabled",
       hasPassphrase: "Passphrase saved",
@@ -209,9 +208,11 @@
       loadFailed: "Unable to load credential.",
       listFailed: "Unable to load saved connections.",
       vaultDecryptFailed:
-        "This connection's private key was encrypted with an earlier login password and cannot be decrypted with the current password. Re-save the connection to use it.",
-      removedCredentials:
-        "{count} older saved connection(s) could not be migrated and were removed.",
+        "This connection still uses encryption from an earlier release. Migrate it with the earlier login password before opening it.",
+      unmigratedCredentials:
+        "{count} saved connection(s) still use encryption from an earlier release. Enter the earlier login password to migrate them now?",
+      migrationPassword: "Earlier login password",
+      migrationFailed: "Unable to migrate older saved connections.",
       deleteFailed: "Unable to delete credential.",
       connectionLost: "Connection lost; reconnecting in {seconds}s",
       sessionClosed: "Session closed",
@@ -318,7 +319,7 @@
       clearKey: "清空私钥",
       passphraseOptional: "私钥密码（可选）",
       terminalType: "终端类型",
-      useTmux: "断线后使用 tmux 恢复终端",
+      useHerdr: "断线后使用 Herdr 恢复终端",
       cancel: "取消",
       save: "保存",
       connect: "连接",
@@ -341,7 +342,7 @@
       delete: "删除",
       status: "状态",
       updated: "更新时间",
-      tmuxRecovery: "tmux 恢复",
+      herdrRecovery: "Herdr 恢复",
       enabled: "已启用",
       disabled: "未启用",
       hasPassphrase: "已保存私钥密码",
@@ -357,8 +358,11 @@
       loadFailed: "无法加载凭据。",
       listFailed: "无法加载已保存的连接。",
       vaultDecryptFailed:
-        "该连接的私钥由旧登录密码加密，当前密码无法解密。请重新保存此连接后再使用。",
-      removedCredentials: "{count} 个较早保存的连接无法迁移，已被清理。",
+        "该连接仍使用旧版本加密格式。请先使用此前的登录密码迁移凭据。",
+      unmigratedCredentials:
+        "有 {count} 个连接仍使用旧版本加密格式。是否现在输入此前的登录密码进行迁移？",
+      migrationPassword: "此前的登录密码",
+      migrationFailed: "无法迁移旧版凭据。",
       deleteFailed: "无法删除凭据。",
       connectionLost: "连接已中断，{seconds} 秒后重连",
       sessionClosed: "会话已关闭",
@@ -458,7 +462,7 @@
     keyFile: $("ssh-key-file"),
     pass: $("ssh-passphrase"),
     termType: $("ssh-term"),
-    useTmux: $("ssh-use-tmux"),
+    useHerdr: $("ssh-use-herdr"),
     clearKey: $("clear-key-btn"),
     save: $("save-credential-btn"),
     connectOnly: $("connect-only-btn"),
@@ -513,7 +517,8 @@
     activeId = null,
     serial = 0,
     currentPage = "login",
-    connectionBusy = false;
+    connectionBusy = false,
+    promptedLegacyCount = 0;
   const sessions = new Map();
   const groups = new Map();
   let activeGroupId = null;
@@ -580,16 +585,6 @@
       }),
     );
   }
-  function loadNotices() {
-    try {
-      return JSON.parse(localStorage.getItem(NOTICE_KEY) || "{}");
-    } catch (_) {
-      return {};
-    }
-  }
-  function saveNotices(notices) {
-    localStorage.setItem(NOTICE_KEY, JSON.stringify(notices || {}));
-  }
   async function api(path, options = {}) {
     const res = await fetch(path, {
       credentials: "same-origin",
@@ -614,6 +609,7 @@
       AUTH_REQUIRED: "login",
       INVALID_PORT: "invalidPort",
       VAULT_DECRYPT_FAILED: "vaultDecryptFailed",
+      VAULT_MIGRATE_FAILED: "migrationFailed",
       CREDENTIAL_STORAGE_DISABLED: "saveFailed",
     };
     return code && map[code]
@@ -973,22 +969,26 @@
     if (res.ok) {
       credentials = data.credentials || [];
       renderHome();
-      const removed = Number(data.removedCredentials) || 0;
-      const notices = loadNotices();
-      const user = e.authUser.textContent || "default";
-      if (removed > 0) {
-        const key = "removedCredentials:" + user;
-        if (notices[key] !== removed) {
-          showError(t("removedCredentials", { count: removed }));
-          notices[key] = removed;
-          saveNotices(notices);
+      const unmigrated = Number(data.unmigratedCredentials) || 0;
+      if (unmigrated > 0 && promptedLegacyCount !== unmigrated) {
+        promptedLegacyCount = unmigrated;
+        if (confirm(t("unmigratedCredentials", { count: unmigrated }))) {
+          const password = prompt(t("migrationPassword"));
+          if (password) {
+            const migrated = await api("/api/credentials/migrate", {
+              method: "POST",
+              body: JSON.stringify({ password }),
+            });
+            if (!migrated.res.ok) {
+              showError(errorMessage(migrated.data, "migrationFailed"));
+            } else {
+              promptedLegacyCount = 0;
+              return refreshCredentials(options);
+            }
+          }
         }
-      } else {
-        const key = "removedCredentials:" + user;
-        if (key in notices) {
-          delete notices[key];
-          saveNotices(notices);
-        }
+      } else if (unmigrated === 0) {
+        promptedLegacyCount = 0;
       }
       return true;
     }
@@ -1018,7 +1018,7 @@
         "</dt><dd></dd></div><div><dt>" +
         t("terminalType") +
         "</dt><dd></dd></div><div><dt>" +
-        t("tmuxRecovery") +
+        t("herdrRecovery") +
         "</dt><dd></dd></div><div><dt>" +
         t("passphrase") +
         "</dt><dd></dd></div><div><dt>" +
@@ -1033,7 +1033,7 @@
       const dd = card.querySelectorAll("dd");
       dd[0].textContent = c.port;
       dd[1].textContent = c.term;
-      dd[2].textContent = c.useTmux ? t("enabled") : t("disabled");
+      dd[2].textContent = c.useHerdr ? t("enabled") : t("disabled");
       dd[3].textContent = c.hasPassphrase ? t("enabled") : t("disabled");
       dd[4].textContent = new Date(c.updatedAt).toLocaleString(
         settings.language,
@@ -1106,7 +1106,7 @@
       e.key.value = item.privateKey || "";
       e.pass.value = item.passphrase || "";
       e.termType.value = item.term || "xterm-256color";
-      e.useTmux.checked = !!item.useTmux;
+      e.useHerdr.checked = !!item.useHerdr;
     }
     openModal(e.connectionModal);
   }
@@ -1120,7 +1120,7 @@
       privateKey: e.key.value,
       passphrase: e.pass.value,
       term: e.termType.value.trim() || "xterm-256color",
-      useTmux: e.useTmux.checked,
+      useHerdr: e.useHerdr.checked,
     };
   }
   function validate(c, requireName = false) {
@@ -1391,7 +1391,10 @@
       retryTimer: null,
       pingTimer: null,
       latency: null,
-      tmuxSession: "",
+      herdrSession:
+        group.credential.useHerdr && group.savedId
+          ? "gowebssh-" + group.savedId + "-" + (group.panes.length + 1)
+          : "",
       metrics: null,
       focusTimer: null,
       mouseButtons: 0,
@@ -1566,7 +1569,7 @@
         passphrase: s.credential.passphrase || undefined,
         cols: s.term.cols,
         rows: s.term.rows,
-        tmuxSession: s.tmuxSession || undefined,
+        herdrSession: s.herdrSession || undefined,
       });
     };
     socket.onmessage = (event) => {
@@ -1586,7 +1589,7 @@
       }
       if (msg.type === "connected") {
         s.retry = 0;
-        s.tmuxSession = msg.data.tmuxSession || s.tmuxSession;
+        s.herdrSession = msg.data.herdrSession || s.herdrSession;
         setState(s, "connected");
         focusTerminal(s);
         fit(s);

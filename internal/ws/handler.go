@@ -417,15 +417,21 @@ func (s *wsSession) handleConnect(raw json.RawMessage) error {
 		_ = s.sendError("BAD_REQUEST", "term is invalid")
 		return errors.New("invalid term")
 	}
-	if cd.UseTmux {
-		if cd.TmuxSession == "" {
-			cd.TmuxSession = "gowebssh-" + newSessionID()
+	if !cd.UseHerdr && cd.LegacyUseTmux {
+		cd.UseHerdr = true
+	}
+	if cd.HerdrSession == "" {
+		cd.HerdrSession = cd.TmuxSession
+	}
+	if cd.UseHerdr {
+		if cd.HerdrSession == "" {
+			cd.HerdrSession = "gowebssh-" + newSessionID()
 		}
-		if len(cd.TmuxSession) > 64 || strings.ContainsFunc(cd.TmuxSession, func(r rune) bool {
+		if len(cd.HerdrSession) > 64 || strings.ContainsFunc(cd.HerdrSession, func(r rune) bool {
 			return !(r == '-' || r == '_' || r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9')
 		}) {
-			_ = s.sendError("BAD_REQUEST", "tmux session name is invalid")
-			return errors.New("invalid tmux session")
+			_ = s.sendError("BAD_REQUEST", "Herdr session name is invalid")
+			return errors.New("invalid Herdr session")
 		}
 	}
 	if cd.Rows < 5 || cd.Rows > 200 {
@@ -464,16 +470,16 @@ func (s *wsSession) handleConnect(raw json.RawMessage) error {
 	}()
 
 	req := sshclient.ConnectRequest{
-		Host:        cd.Host,
-		Port:        cd.Port,
-		Username:    cd.Username,
-		PrivateKey:  cd.PrivateKey,
-		Passphrase:  cd.Passphrase,
-		Term:        cd.Term,
-		Cols:        cd.Cols,
-		Rows:        cd.Rows,
-		UseTmux:     cd.UseTmux,
-		TmuxSession: cd.TmuxSession,
+		Host:         cd.Host,
+		Port:         cd.Port,
+		Username:     cd.Username,
+		PrivateKey:   cd.PrivateKey,
+		Passphrase:   cd.Passphrase,
+		Term:         cd.Term,
+		Cols:         cd.Cols,
+		Rows:         cd.Rows,
+		UseHerdr:     cd.UseHerdr,
+		HerdrSession: cd.HerdrSession,
 	}
 	cd.PrivateKey = ""
 	cd.Passphrase = ""
@@ -493,8 +499,8 @@ func (s *wsSession) handleConnect(raw json.RawMessage) error {
 	}
 
 	s.sshSess = sshSess
-	if !sshSess.TmuxActive {
-		cd.TmuxSession = ""
+	if !sshSess.HerdrActive {
+		cd.HerdrSession = ""
 	}
 	s.sessionID = newSessionID()
 	s.connected.Store(true)
@@ -503,11 +509,12 @@ func (s *wsSession) handleConnect(raw json.RawMessage) error {
 	if err := s.writeJSON(map[string]any{
 		"type": "connected",
 		"data": ConnectedData{
-			SessionID:   s.sessionID,
-			Host:        s.host,
-			Port:        s.port,
-			Username:    s.username,
-			TmuxSession: cd.TmuxSession,
+			SessionID:    s.sessionID,
+			Host:         s.host,
+			Port:         s.port,
+			Username:     s.username,
+			HerdrSession: cd.HerdrSession,
+			TmuxSession:  cd.HerdrSession,
 		},
 	}); err != nil {
 		return err

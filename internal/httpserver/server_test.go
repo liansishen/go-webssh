@@ -1,7 +1,6 @@
 package httpserver
 
 import (
-	"bytes"
 	"encoding/json"
 	"io"
 	"log/slog"
@@ -112,7 +111,7 @@ func TestEncryptedCredentialAPI(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	a := &auth.Authenticator{Username: "admin", Password: "secret", Store: auth.NewStore(time.Hour), TTL: time.Hour, SessionSecret: cfg.Server.SessionSecret, VaultSalt: store.Salt()}
+	a := &auth.Authenticator{Username: "admin", Password: "secret", Store: auth.NewStore(time.Hour), TTL: time.Hour, SessionSecret: cfg.Server.SessionSecret}
 	assets := fstest.MapFS{"index.html": {Data: []byte("index")}}
 	s := New(cfg, a, &ws.Handler{}, store, http.FS(assets), nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	login := httptest.NewRecorder()
@@ -128,7 +127,7 @@ func TestEncryptedCredentialAPI(t *testing.T) {
 		s.server.Handler.ServeHTTP(rr, request)
 		return rr
 	}
-	created := call(http.MethodPost, "/api/credentials", `{"name":"prod","host":"example.com","port":22,"username":"root","privateKey":"private-secret","passphrase":"pass-secret","term":"xterm-256color"}`)
+	created := call(http.MethodPost, "/api/credentials", `{"name":"prod","host":"example.com","port":22,"username":"root","privateKey":"private-secret","passphrase":"pass-secret","term":"xterm-256color","useHerdr":true}`)
 	if created.Code != http.StatusOK {
 		t.Fatalf("create: %d %s", created.Code, created.Body.String())
 	}
@@ -138,9 +137,16 @@ func TestEncryptedCredentialAPI(t *testing.T) {
 	if json.Unmarshal(created.Body.Bytes(), &summary) != nil || summary.ID == "" {
 		t.Fatal("missing credential id")
 	}
+	if !strings.Contains(created.Body.String(), `"useHerdr":true`) || !strings.Contains(created.Body.String(), `"useTmux":true`) {
+		t.Fatalf("create response missing recovery compatibility fields: %s", created.Body.String())
+	}
 	list := call(http.MethodGet, "/api/credentials", "")
 	if list.Code != http.StatusOK || strings.Contains(list.Body.String(), "private-secret") {
 		t.Fatalf("list leaked secret: %s", list.Body.String())
+	}
+	migration := call(http.MethodPost, "/api/credentials/migrate", `{"password":"earlier-password"}`)
+	if migration.Code != http.StatusOK || !strings.Contains(migration.Body.String(), `"migrated":0`) {
+		t.Fatalf("migration endpoint: %d %s", migration.Code, migration.Body.String())
 	}
 	got := call(http.MethodGet, "/api/credentials/"+summary.ID, "")
 	if got.Code != http.StatusOK || !strings.Contains(got.Body.String(), "private-secret") {
@@ -149,67 +155,6 @@ func TestEncryptedCredentialAPI(t *testing.T) {
 	deleted := call(http.MethodDelete, "/api/credentials/"+summary.ID, "")
 	if deleted.Code != http.StatusOK {
 		t.Fatalf("delete: %d", deleted.Code)
-	}
-}
-
-func TestCredentialListRemovesUnmigratableLegacyRecords(t *testing.T) {
-	cfg := config.Default()
-	cfg.Auth.Username, cfg.Auth.Password, cfg.Server.SessionSecret, cfg.SSH.HostKeyPolicy = "admin", "secret", "test-session-secret", "insecure-ignore"
-	store, err := vault.Open(t.TempDir() + "/credentials.db")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
-	if _, err := store.Put(bytes.Repeat([]byte{9}, 32), vault.Credential{Name: "old", Host: "old.example.com", Username: "root", PrivateKey: "old-secret"}); err != nil {
-		t.Fatal(err)
-	}
-	a := &auth.Authenticator{Username: "admin", Password: "secret", Store: auth.NewStore(time.Hour), TTL: time.Hour, SessionSecret: cfg.Server.SessionSecret, VaultSalt: store.Salt()}
-	assets := fstest.MapFS{"index.html": {Data: []byte("index")}}
-	s := New(cfg, a, &ws.Handler{}, store, http.FS(assets), nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
-	login := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/api/login", strings.NewReader(`{"username":"admin","password":"secret"}`))
-	req.Header.Set("Content-Type", "application/json")
-	s.server.Handler.ServeHTTP(login, req)
-	cookie := login.Result().Cookies()[0]
-	call := func(method, path, body string) *httptest.ResponseRecorder {
-		rr := httptest.NewRecorder()
-		request := httptest.NewRequest(method, path, strings.NewReader(body))
-		request.Header.Set("Content-Type", "application/json")
-		request.AddCookie(cookie)
-		s.server.Handler.ServeHTTP(rr, request)
-		return rr
-	}
-	created := call(http.MethodPost, "/api/credentials", `{"name":"new","host":"new.example.com","port":22,"username":"root","privateKey":"new-secret","term":"xterm-256color"}`)
-	if created.Code != http.StatusOK {
-		t.Fatalf("create: %d %s", created.Code, created.Body.String())
-	}
-	list := call(http.MethodGet, "/api/credentials", "")
-	if list.Code != http.StatusOK {
-		t.Fatalf("list: %d %s", list.Code, list.Body.String())
-	}
-	var body struct {
-		Credentials        []credentialSummary `json:"credentials"`
-		RemovedCredentials int                 `json:"removedCredentials"`
-	}
-	if err := json.Unmarshal(list.Body.Bytes(), &body); err != nil {
-		t.Fatal(err)
-	}
-	if len(body.Credentials) != 1 || body.Credentials[0].Name != "new" || body.RemovedCredentials != 1 {
-		t.Fatalf("unexpected list response: %+v", body)
-	}
-	listAgain := call(http.MethodGet, "/api/credentials", "")
-	if listAgain.Code != http.StatusOK {
-		t.Fatalf("list again: %d %s", listAgain.Code, listAgain.Body.String())
-	}
-	var bodyAgain struct {
-		Credentials        []credentialSummary `json:"credentials"`
-		RemovedCredentials int                 `json:"removedCredentials"`
-	}
-	if err := json.Unmarshal(listAgain.Body.Bytes(), &bodyAgain); err != nil {
-		t.Fatal(err)
-	}
-	if len(bodyAgain.Credentials) != 1 || bodyAgain.RemovedCredentials != 0 {
-		t.Fatalf("unexpected repeated list response: %+v", bodyAgain)
 	}
 }
 
@@ -223,7 +168,7 @@ func TestCredentialListSurvivesPasswordChange(t *testing.T) {
 	defer store.Close()
 	assets := fstest.MapFS{"index.html": {Data: []byte("index")}}
 	newServer := func(password string) *Server {
-		a := &auth.Authenticator{Username: "admin", Password: password, Store: auth.NewStore(time.Hour), TTL: time.Hour, SessionSecret: cfg.Server.SessionSecret, VaultSalt: store.Salt()}
+		a := &auth.Authenticator{Username: "admin", Password: password, Store: auth.NewStore(time.Hour), TTL: time.Hour, SessionSecret: cfg.Server.SessionSecret}
 		return New(cfg, a, &ws.Handler{}, store, http.FS(assets), nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	}
 	login := func(s *Server, password string) *http.Cookie {
@@ -276,7 +221,7 @@ func TestCredentialListSurvivesPasswordChange(t *testing.T) {
 		t.Fatalf("unexpected removed count after password change: %+v", listBody)
 	}
 	got := call(changed, changedCookie, http.MethodGet, "/api/credentials/"+createdSummary.ID, "")
-	if got.Code != http.StatusUnprocessableEntity {
+	if got.Code != http.StatusOK || !strings.Contains(got.Body.String(), "private-secret") {
 		t.Fatalf("get with changed password: %d %s", got.Code, got.Body.String())
 	}
 }
