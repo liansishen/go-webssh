@@ -691,7 +691,7 @@ func readDefaultIdentity() (string, string, error) {
 }
 
 func expandPath(path string) string {
-	if path == "~" || strings.HasPrefix(path, "~/") {
+	if path == "~" || strings.HasPrefix(path, "~/") || strings.HasPrefix(path, `~\`) {
 		home, err := os.UserHomeDir()
 		if err != nil {
 			return path

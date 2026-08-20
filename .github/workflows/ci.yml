@@ -40,3 +40,6 @@ jobs:
 
       - name: Build
         run: go build ./...
+
+      - name: Build Windows CLI
+        run: GOOS=windows GOARCH=amd64 go build -o /tmp/go-webssh-cli.exe ./cmd/webssh-cli

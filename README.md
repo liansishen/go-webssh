@@ -60,7 +60,7 @@ curl -fsSL https://raw.githubusercontent.com/liansishen/go-webssh/main/install.s
 可选环境变量：
 
 ```bash
-GOWEBSSH_VERSION=v0.5.14 \
+GOWEBSSH_VERSION=v0.5.15 \
 GOWEBSSH_LISTEN=127.0.0.1:8080 \
 GOWEBSSH_USERNAME=admin \
 GOWEBSSH_ALLOW_PRIVATE_RANGES=false \
@@ -121,6 +121,18 @@ export GOWEBSSH_PASSWORD='your-web-password'
 go-webssh-cli -i ~/.ssh/id_ed25519 user@target.example.com
 ```
 
+Windows（PowerShell / Windows Terminal / cmd）下载 `go-webssh-cli_*_windows_amd64.zip`：
+
+```powershell
+$env:HTTPS_PROXY = "http://lan-proxy:8080"
+$env:GOWEBSSH_URL = "https://webssh.example.com"
+$env:GOWEBSSH_USERNAME = "admin"
+$env:GOWEBSSH_PASSWORD = "your-web-password"
+.\go-webssh-cli.exe -i $env:USERPROFILE\.ssh\id_ed25519 user@target.example.com
+```
+
+请使用 Windows Terminal、PowerShell 或 cmd。Git Bash（mintty）不是 Windows 控制台，raw 模式可能不可用。
+
 使用浏览器里已保存的连接：
 
 ```bash
@@ -142,10 +154,11 @@ go-webssh-cli --saved prod
 | `--saved` | 用已保存凭据的 id 或名称 |
 | `--herdr` / `--tmux` | 请求 Herdr 会话恢复 |
 
-发布压缩包内含 `go-webssh-cli`。从源码构建：
+发布压缩包含 Linux 的 `go-webssh` / `go-webssh-cli`，以及 Windows 的 `go-webssh-cli.exe`。从源码构建：
 
 ```bash
 go build -o go-webssh-cli ./cmd/webssh-cli
+GOOS=windows GOARCH=amd64 go build -o go-webssh-cli.exe ./cmd/webssh-cli
 ```
 
 ## 配置
