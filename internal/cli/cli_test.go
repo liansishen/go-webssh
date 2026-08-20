@@ -292,7 +292,7 @@ func TestRunListAndSavedCredential(t *testing.T) {
 
 func TestRunThroughHTTPConnectProxy(t *testing.T) {
 	t.Parallel()
-	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	backend := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.Method == http.MethodPost && r.URL.Path == "/api/login":
 			http.SetCookie(w, &http.Cookie{Name: "gowebssh_session", Value: "tok", Path: "/"})
@@ -353,6 +353,7 @@ func TestRunThroughHTTPConnectProxy(t *testing.T) {
 		WebUser:      "admin",
 		WebPassword:  "secret",
 		ProxyURL:     proxy.URL,
+		InsecureTLS:  true,
 		IdentityFile: writeTempKey(t),
 		Host:         "target.example.com",
 		SSHUser:      "root",
