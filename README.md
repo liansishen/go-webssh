@@ -7,7 +7,7 @@
 本项目是**服务端代理式 WebSSH**：
 
 ```text
-浏览器 -> Go WebSSH 服务端 -> 目标 SSH 服务器
+浏览器 / go-webssh-cli -> (HTTP 代理 CONNECT) -> Go WebSSH 服务端 -> 目标 SSH 服务器
 ```
 
 - **私钥会发送到 WebSSH 服务端内存**，用于 SSH 握手与认证。
@@ -29,6 +29,7 @@
 - 右键菜单：复制、粘贴、全选、清屏、分屏、关闭窗格（含快捷键提示）
 - 安全粘贴确认（多行 / 控制字符）；`Ctrl+Shift+C/V`（macOS：`Cmd+C/V`）
 - 可选 OSC 52 远程剪贴板写入，支持 Herdr 等终端程序通过 SSH 将复制内容写入浏览器所在设备
+- 本机终端 CLI（`go-webssh-cli`）：经 HTTP 代理登录 WebSSH，在本地终端接入同一条 PTY 会话
 
 ### 界面与主题
 
@@ -59,7 +60,7 @@ curl -fsSL https://raw.githubusercontent.com/liansishen/go-webssh/main/install.s
 可选环境变量：
 
 ```bash
-GOWEBSSH_VERSION=v0.5.13 \
+GOWEBSSH_VERSION=v0.5.14 \
 GOWEBSSH_LISTEN=127.0.0.1:8080 \
 GOWEBSSH_USERNAME=admin \
 GOWEBSSH_ALLOW_PRIVATE_RANGES=false \
@@ -87,6 +88,64 @@ export GOWEBSSH_HOST_KEY_POLICY=insecure-ignore
 ```bash
 curl -s http://127.0.0.1:8080/api/healthz
 # {"ok":true}
+```
+
+## 终端 CLI
+
+当本机出站 SSH 被局域网拦截，但浏览器能打开 WebSSH 时，可用 `go-webssh-cli` 在本地终端里连同一条通道。CLI 走 HTTPS/WebSocket，并且会用 `HTTP_PROXY` / `HTTPS_PROXY` 向局域网 HTTP 代理发 `CONNECT`。
+
+```text
+本机终端  --PTY I/O-->  go-webssh-cli
+                              |
+                              |  HTTP CONNECT webssh:443
+                              v
+                        局域网 HTTP 代理
+                              |
+                              v
+                        go-webssh  /api/login + /api/ws/ssh
+                              |
+                              |  服务端 ssh.Dial + PTY
+                              v
+                        目标 SSH 服务器
+```
+
+这是浏览器 xterm.js 的本地替代，不是 TCP 隧道。**不能**用它跑 `scp`、`sftp`、`git+ssh`、VS Code Remote 或 SSH 端口转发。私钥仍会发到 WebSSH 服务端内存，与浏览器连接相同。
+
+```bash
+export https_proxy=http://lan-proxy:8080
+export GOWEBSSH_URL=https://webssh.example.com
+export GOWEBSSH_USERNAME=admin
+# 密码也可不写进环境，CLI 会提示
+export GOWEBSSH_PASSWORD='your-web-password'
+
+go-webssh-cli -i ~/.ssh/id_ed25519 user@target.example.com
+```
+
+使用浏览器里已保存的连接：
+
+```bash
+go-webssh-cli --list
+go-webssh-cli --saved prod
+```
+
+常用参数：
+
+| 参数 / 环境变量 | 说明 |
+|---|---|
+| `--url` / `GOWEBSSH_URL` | WebSSH 基址，例如 `https://webssh.example.com` |
+| `--web-user` / `GOWEBSSH_USERNAME` | Web 登录用户名 |
+| `--web-password` / `GOWEBSSH_PASSWORD` | Web 登录密码；建议用环境变量而不是命令行 |
+| `--proxy` / `GOWEBSSH_PROXY` | HTTP 代理 URL；默认使用 `HTTP_PROXY`/`HTTPS_PROXY` |
+| `--no-proxy` | 不走代理 |
+| `--insecure` | 跳过 WebSSH 服务端的 TLS 证书校验 |
+| `-i` | 本机 SSH 私钥 |
+| `--saved` | 用已保存凭据的 id 或名称 |
+| `--herdr` / `--tmux` | 请求 Herdr 会话恢复 |
+
+发布压缩包内含 `go-webssh-cli`。从源码构建：
+
+```bash
+go build -o go-webssh-cli ./cmd/webssh-cli
 ```
 
 ## 配置
@@ -378,6 +437,7 @@ server:
 go test ./...
 go vet ./...
 go build -o go-webssh ./cmd/webssh
+go build -o go-webssh-cli ./cmd/webssh-cli
 ```
 
 ### 正式发布流程
@@ -386,7 +446,7 @@ go build -o go-webssh ./cmd/webssh
 
 发布前需要同步以下版本号：
 
-- `cmd/webssh/main.go` 中的默认 `version`；
+- `cmd/webssh/main.go` 与 `cmd/webssh-cli/main.go` 中的默认 `version`；
 - 本文档安装示例中的 `GOWEBSSH_VERSION`；
 - `web/index.html` 中有改动的前端静态资源查询版本，用于刷新浏览器缓存。
 

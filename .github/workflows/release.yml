@@ -55,6 +55,10 @@ jobs:
               go build -trimpath \
               -ldflags "-s -w -X main.version=${VERSION}" \
               -o "${dir}/go-webssh" ./cmd/webssh
+            CGO_ENABLED=0 GOOS="${os}" GOARCH="${arch}" \
+              go build -trimpath \
+              -ldflags "-s -w -X main.version=${VERSION}" \
+              -o "${dir}/go-webssh-cli" ./cmd/webssh-cli
             cp README.md config.example.yaml "${dir}/"
             mkdir -p "${dir}/themes"
             cp themes/*.json themes/README.md "${dir}/themes/"
