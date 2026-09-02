@@ -274,6 +274,7 @@ func (s *relaySession) handleText(data []byte) error {
 				return fmt.Errorf("stdout: %w", err)
 			}
 			return nil
+		}
 	case "error":
 		var ed ws.ErrorData
 		_ = json.Unmarshal(msg.Data, &ed)
