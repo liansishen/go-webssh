@@ -13,7 +13,7 @@ import (
 	"github.com/liansishen/go-webssh/internal/cli"
 )
 
-var version = "0.5.15"
+var version = "0.5.16"
 
 func main() {
 	fs := flag.NewFlagSet("go-webssh-cli", flag.ExitOnError)

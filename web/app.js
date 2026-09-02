@@ -1183,9 +1183,16 @@
     );
   }
   function send(s, type, data) {
-    if (s.socket?.readyState === WebSocket.OPEN)
+    if (
+      s.socket?.readyState === WebSocket.OPEN &&
+      (type !== "input" || s.state === "connected")
+    )
       s.socket.send(JSON.stringify({ type, data }));
   }
+
+  const TERMINAL_MOUSE_RESET =
+    "\x1b[?9l\x1b[?1000l\x1b[?1002l\x1b[?1003l" +
+    "\x1b[?1005l\x1b[?1006l\x1b[?1015l\x1b[?1016l";
   function isTerminalAtBottom(term) {
     try {
       const buf = term.buffer.active;
@@ -1245,8 +1252,9 @@
       if (document.activeElement !== helper) s.term.focus();
     }, delay);
   }
-  function releaseTerminalMouseButtons() {
+  function releaseTerminalMouseButtons(targetSession = null) {
     sessions.forEach((s) => {
+      if (targetSession && s !== targetSession) return;
       const target = s.term.element;
       let remaining = s.mouseButtons;
       if (!target || !remaining) return;
@@ -1279,6 +1287,16 @@
       if (force || document.hidden || !document.hasFocus())
         releaseTerminalMouseButtons();
     }, 0);
+  }
+
+  function resetTerminalMouseState(s) {
+    if (!s) return;
+    releaseTerminalMouseButtons(s);
+    try {
+      s.term.clearSelection();
+      s.term.write(TERMINAL_MOUSE_RESET);
+    } catch (_) {}
+    s.mouseButtons = 0;
   }
   function fitAll() {
     sessions.forEach(fit);
@@ -1549,11 +1567,14 @@
   }
   function connectSession(s) {
     clearTimeout(s.retryTimer);
-    if (s.socket) {
+    const oldSocket = s.socket;
+    s.socket = null;
+    if (oldSocket) {
       try {
-        s.socket.close();
+        oldSocket.close();
       } catch (_) {}
     }
+    resetTerminalMouseState(s);
     s.manual = false;
     s.suppressReconnect = false;
     setState(s, s.retry ? "reconnecting" : "connecting");
@@ -1561,6 +1582,7 @@
     socket.binaryType = "arraybuffer";
     s.socket = socket;
     socket.onopen = () => {
+      if (s.socket !== socket) return;
       try {
         s.fit.fit();
       } catch (_) {}
@@ -1573,6 +1595,7 @@
       });
     };
     socket.onmessage = (event) => {
+      if (s.socket !== socket) return;
       if (event.data instanceof ArrayBuffer) {
         const atBottom = isTerminalAtBottom(s.term);
         s.term.write(new Uint8Array(event.data), () => {
@@ -1626,10 +1649,13 @@
         s.term.writeln("\r\n[" + t("sessionClosed") + "]");
       }
     };
-    socket.onerror = () => setState(s, "disconnected");
+    socket.onerror = () => {
+      if (s.socket === socket) setState(s, "disconnected");
+    };
     socket.onclose = () => {
       if (s.socket !== socket) return;
       s.socket = null;
+      resetTerminalMouseState(s);
       clearInterval(s.pingTimer);
       s.pingTimer = null;
       s.latency = null;
@@ -1666,10 +1692,12 @@
     s.pingTimer = null;
     s.latency = null;
     send(s, "disconnect");
-    try {
-      s.socket?.close();
-    } catch (_) {}
+    const socket = s.socket;
     s.socket = null;
+    try {
+      socket?.close();
+    } catch (_) {}
+    resetTerminalMouseState(s);
     setState(s, "disconnected");
     s.term.writeln("\r\n[" + t("manuallyDisconnected") + "]");
   }

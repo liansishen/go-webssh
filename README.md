@@ -60,7 +60,7 @@ curl -fsSL https://raw.githubusercontent.com/liansishen/go-webssh/main/install.s
 可选环境变量：
 
 ```bash
-GOWEBSSH_VERSION=v0.5.15 \
+GOWEBSSH_VERSION=v0.5.16 \
 GOWEBSSH_LISTEN=127.0.0.1:8080 \
 GOWEBSSH_USERNAME=admin \
 GOWEBSSH_ALLOW_PRIVATE_RANGES=false \

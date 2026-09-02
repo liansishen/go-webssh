@@ -13,9 +13,20 @@ import (
 	"github.com/liansishen/go-webssh/internal/ws"
 )
 
+const terminalMouseReset = "\x1b[?9l\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1005l\x1b[?1006l\x1b[?1015l\x1b[?1016l"
+
+func resetTerminalMouseModes(stdio Stdio) {
+	if stdio.StdoutFile == nil || !isTerminal(int(stdio.StdoutFile.Fd())) {
+		return
+	}
+	_, _ = io.WriteString(stdio.Stdout, terminalMouseReset)
+}
+
 func relay(ctx context.Context, conn *websocket.Conn, stdio Stdio) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
+
+	resetTerminalMouseModes(stdio)
 
 	var restore func()
 	if stdio.StdinFile != nil && isTerminal(int(stdio.StdinFile.Fd())) {
@@ -24,8 +35,13 @@ func relay(ctx context.Context, conn *websocket.Conn, stdio Stdio) error {
 			return fmt.Errorf("set raw terminal: %w", err)
 		}
 		restore = fn
-		defer restore()
 	}
+	defer func() {
+		resetTerminalMouseModes(stdio)
+		if restore != nil {
+			restore()
+		}
+	}()
 
 	s := &relaySession{
 		conn:  conn,
@@ -50,10 +66,6 @@ func relay(ctx context.Context, conn *websocket.Conn, stdio Stdio) error {
 
 	readErr := s.readLoop(ctx)
 	cancel()
-	if restore != nil {
-		restore()
-		restore = nil
-	}
 
 	var re *RemoteExit
 	if errors.As(readErr, &re) {
