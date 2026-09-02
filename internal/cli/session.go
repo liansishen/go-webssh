@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"sync"
 	"time"
 
@@ -13,13 +14,65 @@ import (
 	"github.com/liansishen/go-webssh/internal/ws"
 )
 
-const terminalMouseReset = "\x1b[?9l\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1005l\x1b[?1006l\x1b[?1015l\x1b[?1016l"
+const (
+	cliReadTimeout     = 60 * time.Second
+	terminalMouseReset = "\x1b[?9l\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1005l\x1b[?1006l\x1b[?1015l\x1b[?1016l"
+)
 
 func resetTerminalMouseModes(stdio Stdio) {
 	if stdio.StdoutFile == nil || !isTerminal(int(stdio.StdoutFile.Fd())) {
 		return
 	}
 	_, _ = io.WriteString(stdio.Stdout, terminalMouseReset)
+}
+
+func writeDisconnectNotice(stdio Stdio, reason string) {
+	if reason == "" {
+		reason = "connection closed"
+	}
+	fmt.Fprintf(stdio.Stderr, "go-webssh-cli: disconnected: %s\n", reason)
+}
+
+func describeDisconnect(err error) string {
+	if err == nil {
+		return "connection closed"
+	}
+	var closeErr *websocket.CloseError
+	if errors.As(err, &closeErr) {
+		if closeErr.Text != "" {
+			return fmt.Sprintf("WebSocket closed (code %d): %s", closeErr.Code, closeErr.Text)
+		}
+		return fmt.Sprintf("WebSocket closed (code %d)", closeErr.Code)
+	}
+	var netErr net.Error
+	if errors.As(err, &netErr) && netErr.Timeout() {
+		return "WebSocket read timeout"
+	}
+	if errors.Is(err, io.EOF) {
+		return "peer closed the connection"
+	}
+	if errors.Is(err, context.Canceled) {
+		return "connection canceled"
+	}
+	return err.Error()
+}
+
+func describeRemoteExit(exit *RemoteExit) string {
+	if exit == nil {
+		return "remote session closed"
+	}
+	if exit.Message == "" {
+		return fmt.Sprintf("remote session exited with status %d", exit.Code)
+	}
+	if exit.Code != 0 {
+		return fmt.Sprintf("%s (exit status %d)", exit.Message, exit.Code)
+	}
+	return exit.Message
+}
+
+type relayResult struct {
+	source string
+	err    error
 }
 
 func relay(ctx context.Context, conn *websocket.Conn, stdio Stdio) error {
@@ -60,33 +113,67 @@ func relay(ctx context.Context, conn *websocket.Conn, stdio Stdio) error {
 		_ = s.sendJSON("resize", ws.ResizeData{Cols: c, Rows: r})
 	})
 
-	errc := make(chan error, 3)
-	go func() { errc <- s.copyStdin(ctx) }()
-	go func() { errc <- s.keepAlive(ctx) }()
+	workerResults := make(chan relayResult, 2)
+	go func() {
+		workerResults <- relayResult{source: "stdin", err: s.copyStdin(ctx)}
+	}()
+	go func() {
+		workerResults <- relayResult{source: "keepalive", err: s.keepAlive(ctx)}
+	}()
+	readResults := make(chan error, 1)
+	go func() {
+		readResults <- s.readLoop(ctx)
+	}()
 
-	readErr := s.readLoop(ctx)
-	cancel()
+	var (
+		source string
+		readErr error
+	)
+	select {
+	case result := <-workerResults:
+		source = result.source
+		if result.err == nil {
+			cancel()
+			_ = conn.Close()
+			<-readResults
+			if source == "stdin" {
+				writeDisconnectNotice(stdio, "local input closed")
+			}
+			return nil
+		}
+		if errors.Is(result.err, context.Canceled) {
+			cancel()
+			_ = conn.Close()
+			<-readResults
+			writeDisconnectNotice(stdio, describeDisconnect(result.err))
+			return nil
+		}
+		cancel()
+		_ = conn.Close()
+		<-readResults
+		return fmt.Errorf("%s: %w", source, result.err)
+	case readErr = <-readResults:
+		cancel()
+		_ = conn.Close()
+	}
 
 	var re *RemoteExit
 	if errors.As(readErr, &re) {
 		if re.Code == 0 {
+			writeDisconnectNotice(stdio, describeRemoteExit(re))
 			return nil
 		}
 		return re
 	}
-	if websocket.IsCloseError(readErr, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
-		return nil
-	}
-	if readErr != nil && !errors.Is(readErr, io.EOF) {
-		return readErr
-	}
-	select {
-	case err := <-errc:
-		if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, context.Canceled) {
-			return err
+	if readErr != nil {
+		if websocket.IsCloseError(readErr, websocket.CloseNormalClosure, websocket.CloseGoingAway) ||
+			errors.Is(readErr, io.EOF) || errors.Is(readErr, context.Canceled) {
+			writeDisconnectNotice(stdio, describeDisconnect(readErr))
+			return nil
 		}
-	default:
+		return fmt.Errorf("disconnected: %s", describeDisconnect(readErr))
 	}
+	writeDisconnectNotice(stdio, "connection closed")
 	return nil
 }
 
@@ -148,11 +235,14 @@ func (s *relaySession) keepAlive(ctx context.Context) error {
 }
 
 func (s *relaySession) readLoop(ctx context.Context) error {
+	s.conn.SetPongHandler(func(string) error {
+		return s.conn.SetReadDeadline(time.Now().Add(cliReadTimeout))
+	})
 	for {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		_ = s.conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+		_ = s.conn.SetReadDeadline(time.Now().Add(cliReadTimeout))
 		mt, data, err := s.conn.ReadMessage()
 		if err != nil {
 			return err
@@ -160,7 +250,7 @@ func (s *relaySession) readLoop(ctx context.Context) error {
 		switch mt {
 		case websocket.BinaryMessage:
 			if _, werr := s.stdio.Stdout.Write(data); werr != nil {
-				return werr
+				return fmt.Errorf("stdout: %w", werr)
 			}
 		case websocket.TextMessage:
 			if err := s.handleText(data); err != nil {
@@ -180,8 +270,10 @@ func (s *relaySession) handleText(data []byte) error {
 		var text string
 		if json.Unmarshal(msg.Data, &text) == nil && text != "" {
 			_, err := s.stdio.Stdout.Write([]byte(text))
-			return err
-		}
+			if err != nil {
+				return fmt.Errorf("stdout: %w", err)
+			}
+			return nil
 	case "error":
 		var ed ws.ErrorData
 		_ = json.Unmarshal(msg.Data, &ed)
