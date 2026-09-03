@@ -223,11 +223,8 @@ func (s *relaySession) keepAlive(ctx context.Context) error {
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-ticker.C:
-			s.writeMu.Lock()
-			_ = s.conn.SetWriteDeadline(time.Now().Add(30 * time.Second))
-			err := s.conn.WriteControl(websocket.PingMessage, []byte("ping"), time.Now().Add(10*time.Second))
-			s.writeMu.Unlock()
-			if err != nil {
+			// Use an application ping so the server's read deadline is refreshed.
+			if err := s.sendJSON("ping", float64(time.Now().UnixMilli())); err != nil {
 				return err
 			}
 		}
