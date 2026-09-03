@@ -70,10 +70,6 @@ func describeRemoteExit(exit *RemoteExit) string {
 	return exit.Message
 }
 
-type relayResult struct {
-	source string
-	err    error
-}
 
 func relay(ctx context.Context, conn *websocket.Conn, stdio Stdio) error {
 	ctx, cancel := context.WithCancel(ctx)
@@ -113,49 +109,24 @@ func relay(ctx context.Context, conn *websocket.Conn, stdio Stdio) error {
 		_ = s.sendJSON("resize", ws.ResizeData{Cols: c, Rows: r})
 	})
 
-	workerResults := make(chan relayResult, 2)
+	errc := make(chan error, 3)
 	go func() {
-		workerResults <- relayResult{source: "stdin", err: s.copyStdin(ctx)}
+		err := s.copyStdin(ctx)
+		if err != nil && !errors.Is(err, context.Canceled) {
+			err = fmt.Errorf("stdin relay: %w", err)
+		}
+		errc <- err
 	}()
 	go func() {
-		workerResults <- relayResult{source: "keepalive", err: s.keepAlive(ctx)}
-	}()
-	readResults := make(chan error, 1)
-	go func() {
-		readResults <- s.readLoop(ctx)
+		err := s.keepAlive(ctx)
+		if err != nil && !errors.Is(err, context.Canceled) {
+			err = fmt.Errorf("keepalive: %w", err)
+		}
+		errc <- err
 	}()
 
-	var (
-		source string
-		readErr error
-	)
-	select {
-	case result := <-workerResults:
-		source = result.source
-		if result.err == nil {
-			cancel()
-			_ = conn.Close()
-			<-readResults
-			if source == "stdin" {
-				writeDisconnectNotice(stdio, "local input closed")
-			}
-			return nil
-		}
-		if errors.Is(result.err, context.Canceled) {
-			cancel()
-			_ = conn.Close()
-			<-readResults
-			writeDisconnectNotice(stdio, describeDisconnect(result.err))
-			return nil
-		}
-		cancel()
-		_ = conn.Close()
-		<-readResults
-		return fmt.Errorf("%s: %w", source, result.err)
-	case readErr = <-readResults:
-		cancel()
-		_ = conn.Close()
-	}
+	readErr := s.readLoop(ctx)
+	cancel()
 
 	var re *RemoteExit
 	if errors.As(readErr, &re) {
@@ -172,6 +143,13 @@ func relay(ctx context.Context, conn *websocket.Conn, stdio Stdio) error {
 			return nil
 		}
 		return fmt.Errorf("disconnected: %s", describeDisconnect(readErr))
+	}
+	select {
+	case err := <-errc:
+		if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, context.Canceled) {
+			return err
+		}
+	default:
 	}
 	writeDisconnectNotice(stdio, "connection closed")
 	return nil
