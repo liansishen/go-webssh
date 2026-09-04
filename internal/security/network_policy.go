@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -94,54 +95,63 @@ func parsePrefixOrIP(s string) (netip.Prefix, error) {
 }
 
 func (p *NetworkPolicy) ValidateHostPort(host string, port int) error {
+	_, err := p.ResolveAllowedHostPort(host, port)
+	return err
+}
+
+// ResolveAllowedHostPort resolves and validates a destination once so callers
+// can dial the exact address that passed the network policy.
+func (p *NetworkPolicy) ResolveAllowedHostPort(host string, port int) (string, error) {
 	if port < 1 || port > 65535 {
-		return &PolicyError{Code: "INVALID_PORT", Message: "port must be between 1 and 65535"}
+		return "", &PolicyError{Code: "INVALID_PORT", Message: "port must be between 1 and 65535"}
 	}
 	host = strings.TrimSpace(host)
 	if host == "" {
-		return &PolicyError{Code: "INVALID_HOST", Message: "host is required"}
+		return "", &PolicyError{Code: "INVALID_HOST", Message: "host is required"}
 	}
 	if strings.Contains(host, "://") {
-		return &PolicyError{Code: "INVALID_HOST", Message: "host must not include URL scheme"}
+		return "", &PolicyError{Code: "INVALID_HOST", Message: "host must not include URL scheme"}
 	}
-	// strip brackets for IPv6 literals
 	if strings.HasPrefix(host, "[") && strings.HasSuffix(host, "]") {
 		host = host[1 : len(host)-1]
 	}
 	lower := strings.ToLower(host)
 	if lower == "localhost" || strings.HasSuffix(lower, ".localhost") {
-		return &PolicyError{Code: "NETWORK_DENIED", Message: "target host is blocked by network policy"}
+		return "", &PolicyError{Code: "NETWORK_DENIED", Message: "target host is blocked by network policy"}
 	}
 
-	// Try parse as IP first.
 	if ip, err := netip.ParseAddr(host); err == nil {
+		ip = ip.Unmap()
 		if err := p.checkAddr(ip); err != nil {
-			return err
+			return "", err
 		}
-		return nil
+		return net.JoinHostPort(ip.String(), strconv.Itoa(port)), nil
 	}
 
-	// Resolve domain.
 	ctx, cancel := context.WithTimeout(context.Background(), p.LookupTimeout)
 	defer cancel()
 	ips, err := p.Resolver.LookupIPAddr(ctx, host)
 	if err != nil {
-		return &PolicyError{Code: "INVALID_HOST", Message: "failed to resolve host"}
+		return "", &PolicyError{Code: "INVALID_HOST", Message: "failed to resolve host"}
 	}
 	if len(ips) == 0 {
-		return &PolicyError{Code: "INVALID_HOST", Message: "host resolved to no addresses"}
+		return "", &PolicyError{Code: "INVALID_HOST", Message: "host resolved to no addresses"}
 	}
+	var resolved netip.Addr
 	for _, ipa := range ips {
 		addr, ok := netip.AddrFromSlice(ipa.IP)
 		if !ok {
-			return &PolicyError{Code: "NETWORK_DENIED", Message: "target host is blocked by network policy"}
+			return "", &PolicyError{Code: "NETWORK_DENIED", Message: "target host is blocked by network policy"}
 		}
 		addr = addr.Unmap()
 		if err := p.checkAddr(addr); err != nil {
-			return err
+			return "", err
+		}
+		if !resolved.IsValid() {
+			resolved = addr
 		}
 	}
-	return nil
+	return net.JoinHostPort(resolved.String(), strconv.Itoa(port)), nil
 }
 
 func (p *NetworkPolicy) checkAddr(addr netip.Addr) error {

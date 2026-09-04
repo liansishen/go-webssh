@@ -10,7 +10,7 @@
 浏览器 / go-webssh-cli -> (HTTP 代理 CONNECT) -> Go WebSSH 服务端 -> 目标 SSH 服务器
 ```
 
-- **私钥会发送到 WebSSH 服务端内存**，用于 SSH 握手与认证。
+- 浏览器和默认 PTY CLI 模式会把私钥发送到 WebSSH 服务端内存，用于 SSH 握手与认证；`--stdio` ProxyCommand 模式的私钥只由本机 OpenSSH 使用。
 - 未明确保存时，私钥**不会**写入磁盘、数据库、日志或浏览器 `localStorage` / `sessionStorage`。
 - 若启用加密凭据库并主动保存连接，私钥会以 AES-256-GCM 加密后存入本地数据库（见下文）。
 - 请只在你信任的部署上使用私钥；生产环境务必 HTTPS。
@@ -29,7 +29,7 @@
 - 右键菜单：复制、粘贴、全选、清屏、分屏、关闭窗格（含快捷键提示）
 - 安全粘贴确认（多行 / 控制字符）；`Ctrl+Shift+C/V`（macOS：`Cmd+C/V`）
 - 可选 OSC 52 远程剪贴板写入，支持 Herdr 等终端程序通过 SSH 将复制内容写入浏览器所在设备
-- 本机终端 CLI（`go-webssh-cli`）：经 HTTP 代理登录 WebSSH，在本地终端接入同一条 PTY 会话
+- 本机终端 CLI（`go-webssh-cli`）：默认提供 PTY 会话，也可通过 `--stdio` 为 OpenSSH 提供 X11、SOCKS5 和端口转发所需的透明连接
 
 ### 界面与主题
 
@@ -60,7 +60,7 @@ curl -fsSL https://raw.githubusercontent.com/liansishen/go-webssh/main/install.s
 可选环境变量：
 
 ```bash
-GOWEBSSH_VERSION=v0.5.20 \
+GOWEBSSH_VERSION=v0.5.21 \
 GOWEBSSH_LISTEN=127.0.0.1:8080 \
 GOWEBSSH_USERNAME=admin \
 GOWEBSSH_ALLOW_PRIVATE_RANGES=false \
@@ -109,7 +109,7 @@ curl -s http://127.0.0.1:8080/api/healthz
                         目标 SSH 服务器
 ```
 
-这是浏览器 xterm.js 的本地替代，不是 TCP 隧道。**不能**用它跑 `scp`、`sftp`、`git+ssh`、VS Code Remote 或 SSH 端口转发。私钥仍会发到 WebSSH 服务端内存，与浏览器连接相同。
+默认交互模式是浏览器 xterm.js 的本地替代，不是 TCP 隧道，因此不能运行 `scp`、`sftp`、`git+ssh`、VS Code Remote 或 SSH 端口转发。需要这些能力时，启用下述 `--stdio` ProxyCommand 模式。默认交互模式中的私钥仍会发到 WebSSH 服务端内存。
 
 ```bash
 export https_proxy=http://lan-proxy:8080
@@ -132,6 +132,44 @@ $env:GOWEBSSH_PASSWORD = "your-web-password"
 ```
 
 请使用 Windows Terminal、PowerShell 或 cmd。Git Bash（mintty）不是 Windows 控制台，raw 模式可能不可用。
+
+### OpenSSH ProxyCommand、X11 与 SOCKS5
+
+服务端显式启用 `tunnel.enabled` 后，`--stdio` 会把本机 OpenSSH 的原始字节封装在 WSS 中。客户端不会直接连接目标 SSH 端口；它的出站网络仍然只有经局域网 HTTP 代理访问 WebSSH 服务端的 HTTPS/WSS。目标 SSH 私钥和 host key 校验都保留在本机 OpenSSH。
+
+`--stdio` 的 stdin/stdout 专用于 SSH 数据，不能交互输入 Web 登录密码。请通过 `GOWEBSSH_PASSWORD` 提供密码；不要把 `--web-password` 写进 SSH 配置，因为命令行参数可能被本机其他进程看到。
+
+```bash
+export HTTPS_PROXY=http://lan-proxy:8080
+export GOWEBSSH_URL=https://webssh.example.com
+export GOWEBSSH_USERNAME=admin
+export GOWEBSSH_PASSWORD='your-web-password'
+```
+
+在 `~/.ssh/config` 中配置：
+
+```sshconfig
+Host target-via-webssh
+    HostName target.example.com
+    User alice
+    IdentityFile ~/.ssh/id_ed25519
+    ProxyCommand go-webssh-cli --stdio %h %p
+    ServerAliveInterval 20
+```
+
+之后可以使用标准 OpenSSH 功能：
+
+```bash
+ssh target-via-webssh
+ssh -X target-via-webssh
+ssh -N -D 127.0.0.1:1080 target-via-webssh
+ssh -N -L 8080:127.0.0.1:8080 target-via-webssh
+scp local-file target-via-webssh:/tmp/
+```
+
+X11 要求本机已有 X Server、目标机安装 `xauth`，并在目标 `sshd` 中启用 `X11Forwarding yes`。优先使用受限的 `-X`，只对可信目标使用 `-Y`。浏览网页时通常应使用 `-D` 创建本地 SOCKS5 代理，而不是通过 X11 运行远程浏览器；浏览器还应启用通过 SOCKS5 代理解析 DNS。
+
+WebSSH 的 `network_policy` 和 `tunnel.allowed_ports` 只检查最初连接的 SSH 主机。`-L`、`-D` 和 `-R` 的二级目标位于端到端加密的 SSH 连接内，应使用目标机 `sshd_config` 中的 `AllowTcpForwarding`、`PermitOpen`、`PermitListen` 或 `DisableForwarding` 控制。
 
 使用浏览器里已保存的连接：
 
@@ -183,6 +221,15 @@ ssh:
   host_key_policy: "known-hosts"   # or insecure-ignore
   known_hosts_file: "./known_hosts"
 
+tunnel:
+  enabled: false
+  connect_timeout: "15s"
+  write_timeout: "30s"
+  idle_timeout: "30m"
+  max_connections: 5
+  allowed_ports:
+    - 22
+
 network_policy:
   allow_private_ranges: false
   deny:
@@ -225,6 +272,7 @@ ui:
 | `GOWEBSSH_HOST_KEY_POLICY` | `known-hosts` / `insecure-ignore` |
 | `GOWEBSSH_KNOWN_HOSTS_FILE` | known_hosts 路径 |
 | `GOWEBSSH_ALLOW_PRIVATE_RANGES` | `true` 允许 RFC1918 等私网 |
+| `GOWEBSSH_TUNNEL_ENABLED` | `true` 启用 OpenSSH ProxyCommand TCP 隧道；默认关闭 |
 | `GOWEBSSH_SECURE_COOKIE` | `true` 设置 Secure cookie |
 | `GOWEBSSH_LOG_LEVEL` | `debug` / `info` / `warn` / `error` |
 | `GOWEBSSH_CREDENTIALS_KEY_FILE` | 凭据主密钥文件路径（默认 `<db_file>.key`） |

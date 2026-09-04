@@ -36,6 +36,13 @@ ssh:
   idle_timeout: "10m"
   host_key_policy: "insecure-ignore"
   max_sessions: 3
+tunnel:
+  enabled: true
+  connect_timeout: "4s"
+  write_timeout: "6s"
+  idle_timeout: "8m"
+  max_connections: 7
+  allowed_ports: [22, 2222]
 logging:
   level: "debug"
 `
@@ -58,6 +65,12 @@ logging:
 	if cfg.SSH.MaxSessions != 3 {
 		t.Fatalf("max_sessions=%d", cfg.SSH.MaxSessions)
 	}
+	if !cfg.Tunnel.Enabled || cfg.Tunnel.ConnectTimeout != 4*time.Second || cfg.Tunnel.WriteTimeout != 6*time.Second || cfg.Tunnel.IdleTimeout != 8*time.Minute {
+		t.Fatalf("tunnel timing config=%+v", cfg.Tunnel)
+	}
+	if cfg.Tunnel.MaxConnections != 7 || len(cfg.Tunnel.AllowedPorts) != 2 || cfg.Tunnel.AllowedPorts[1] != 2222 {
+		t.Fatalf("tunnel limits config=%+v", cfg.Tunnel)
+	}
 	if err := cfg.Validate(); err != nil {
 		t.Fatal(err)
 	}
@@ -71,6 +84,7 @@ func TestApplyEnvAndFlags(t *testing.T) {
 	t.Setenv("GOWEBSSH_SESSION_SECRET", "secret-secret-secret")
 	t.Setenv("GOWEBSSH_CREDENTIALS_KEY_FILE", "/tmp/credentials.key")
 	t.Setenv("GOWEBSSH_CREDENTIALS_KEY", "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
+	t.Setenv("GOWEBSSH_TUNNEL_ENABLED", "true")
 	ApplyEnv(cfg)
 	ApplyFlags(cfg, "127.0.0.1:19090")
 	if cfg.Server.Listen != "127.0.0.1:19090" {
@@ -81,6 +95,9 @@ func TestApplyEnvAndFlags(t *testing.T) {
 	}
 	if cfg.Credentials.KeyFile != "/tmp/credentials.key" || cfg.Credentials.KeyHex == "" {
 		t.Fatalf("credential key overrides were not applied: %+v", cfg.Credentials)
+	}
+	if !cfg.Tunnel.Enabled {
+		t.Fatal("tunnel environment override was not applied")
 	}
 	if err := cfg.Validate(); err != nil {
 		t.Fatal(err)
@@ -110,6 +127,27 @@ func TestCredentialStorageConfig(t *testing.T) {
 	}
 	if cfg.Credentials.Enabled {
 		t.Fatal("explicit disabled setting was ignored")
+	}
+}
+
+func TestTunnelConfigIsSecureByDefault(t *testing.T) {
+	cfg := Default()
+	if cfg.Tunnel.Enabled {
+		t.Fatal("TCP tunnel must be disabled by default")
+	}
+	if len(cfg.Tunnel.AllowedPorts) != 1 || cfg.Tunnel.AllowedPorts[0] != 22 {
+		t.Fatalf("default tunnel ports=%v", cfg.Tunnel.AllowedPorts)
+	}
+	if cfg.Tunnel.WriteTimeout != 30*time.Second {
+		t.Fatalf("default tunnel write timeout=%v", cfg.Tunnel.WriteTimeout)
+	}
+
+	cfg.Auth.Password = "secret"
+	cfg.Server.SessionSecret = "1234567890123456"
+	cfg.SSH.HostKeyPolicy = "insecure-ignore"
+	cfg.Tunnel.AllowedPorts = []int{22, 22}
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("duplicate tunnel ports must be rejected")
 	}
 }
 

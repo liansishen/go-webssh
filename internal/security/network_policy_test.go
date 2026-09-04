@@ -58,3 +58,20 @@ func TestRejectURLScheme(t *testing.T) {
 		t.Fatal("scheme should be rejected")
 	}
 }
+
+func TestResolveAllowedHostPortReturnsValidatedAddress(t *testing.T) {
+	p, err := NewNetworkPolicy(false, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	address, err := p.ResolveAllowedHostPort("8.8.8.8", 22)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if address != "8.8.8.8:22" {
+		t.Fatalf("resolved address=%q", address)
+	}
+	if _, err := p.ResolveAllowedHostPort("127.0.0.1", 22); err == nil {
+		t.Fatal("blocked address must not be returned")
+	}
+}

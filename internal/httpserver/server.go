@@ -69,6 +69,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/credentials/{id}", s.handleCredentialGet)
 	s.mux.HandleFunc("DELETE /api/credentials/{id}", s.handleCredentialDelete)
 	s.mux.Handle("GET /api/ws/ssh", s.ws)
+	s.mux.HandleFunc("GET /api/ws/tunnel", s.ws.ServeTunnelHTTP)
 
 	// Static assets and SPA entry.
 	s.mux.HandleFunc("GET /", s.handleIndex)

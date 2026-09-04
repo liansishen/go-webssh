@@ -36,6 +36,7 @@ type Handler struct {
 	HostKeyCB      ssh.HostKeyCallback
 	Logger         *slog.Logger
 	activeSessions atomic.Int64
+	activeTunnels  atomic.Int64
 	upgrader       websocket.Upgrader
 }
 

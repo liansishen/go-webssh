@@ -40,24 +40,24 @@ const (
 
 // Options configure a CLI session.
 type Options struct {
-	ServerURL     string
-	WebUser       string
-	WebPassword   string
-	ProxyURL      string
-	NoProxy       bool
-	InsecureTLS   bool
-	IdentityFile  string
-	Passphrase    string
-	Saved         string
-	ListSaved     bool
-	Host          string
-	Port          int
-	SSHUser       string
-	Term          string
-	UseTmux       bool
-	TmuxSession   string
-	Timeout       time.Duration
-	UserAgent     string
+	ServerURL    string
+	WebUser      string
+	WebPassword  string
+	ProxyURL     string
+	NoProxy      bool
+	InsecureTLS  bool
+	IdentityFile string
+	Passphrase   string
+	Saved        string
+	ListSaved    bool
+	Host         string
+	Port         int
+	SSHUser      string
+	Term         string
+	UseTmux      bool
+	TmuxSession  string
+	Timeout      time.Duration
+	UserAgent    string
 }
 
 // Stdio is the local terminal and log streams.
@@ -129,12 +129,12 @@ type savedCredential struct {
 }
 
 type client struct {
-	opt     Options
-	stdio   Stdio
-	base    *url.URL
-	http    *http.Client
-	dialer  *websocket.Dialer
-	origin  string
+	opt    Options
+	stdio  Stdio
+	base   *url.URL
+	http   *http.Client
+	dialer *websocket.Dialer
+	origin string
 }
 
 // Run logs in to the WebSSH server and either lists saved credentials or
@@ -407,6 +407,14 @@ func (c *client) apiURL(path string) string {
 }
 
 func (c *client) wsURL() string {
+	return c.websocketURL("/api/ws/ssh")
+}
+
+func (c *client) tunnelWSURL() string {
+	return c.websocketURL("/api/ws/tunnel")
+}
+
+func (c *client) websocketURL(path string) string {
 	u := *c.base
 	switch u.Scheme {
 	case "https":
@@ -414,7 +422,7 @@ func (c *client) wsURL() string {
 	case "http":
 		u.Scheme = "ws"
 	}
-	u.Path = strings.TrimSuffix(u.Path, "/") + "/api/ws/ssh"
+	u.Path = strings.TrimSuffix(u.Path, "/") + path
 	u.RawQuery = ""
 	u.Fragment = ""
 	return u.String()
@@ -519,11 +527,19 @@ func (c *client) fetchSaved(ctx context.Context, nameOrID string) (savedCredenti
 }
 
 func (c *client) dialWS(ctx context.Context) (*websocket.Conn, error) {
+	return c.dialWSURL(ctx, c.wsURL())
+}
+
+func (c *client) dialTunnelWS(ctx context.Context) (*websocket.Conn, error) {
+	return c.dialWSURL(ctx, c.tunnelWSURL())
+}
+
+func (c *client) dialWSURL(ctx context.Context, endpoint string) (*websocket.Conn, error) {
 	header := http.Header{}
 	header.Set("Origin", c.origin)
 	header.Set("User-Agent", c.opt.UserAgent)
 	c.attachCookies(header)
-	conn, resp, err := c.dialer.DialContext(ctx, c.wsURL(), header)
+	conn, resp, err := c.dialer.DialContext(ctx, endpoint, header)
 	if err != nil {
 		if resp != nil {
 			defer resp.Body.Close()

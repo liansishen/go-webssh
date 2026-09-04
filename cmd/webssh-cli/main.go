@@ -7,24 +7,26 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/liansishen/go-webssh/internal/cli"
 )
 
-var version = "0.5.20"
+var version = "0.5.21"
 
 func main() {
 	fs := flag.NewFlagSet("go-webssh-cli", flag.ExitOnError)
 	fs.SetOutput(os.Stderr)
 	fs.Usage = func() {
 		fmt.Fprintf(os.Stderr, `Usage: go-webssh-cli [options] [user@]host[:port]
+       go-webssh-cli --stdio [options] host [port]
 
-Open an interactive SSH shell through a Go WebSSH server. Traffic to the
-WebSSH server is HTTPS/WebSocket and uses HTTP_PROXY/HTTPS_PROXY (CONNECT).
-This is a PTY relay, not a TCP tunnel: scp, git+ssh, and port forwarding
-are not available.
+Open an interactive SSH shell through a Go WebSSH server, or expose a raw
+stream for OpenSSH ProxyCommand with --stdio. Traffic to the WebSSH server is
+HTTPS/WebSocket and uses HTTP_PROXY/HTTPS_PROXY (CONNECT).
 
 Options:
 `)
@@ -35,6 +37,7 @@ Examples:
   export GOWEBSSH_URL=https://webssh.example.com
   export GOWEBSSH_USERNAME=admin
   go-webssh-cli -i ~/.ssh/id_ed25519 user@target.example.com
+  ssh -o 'ProxyCommand=go-webssh-cli --stdio %%h %%p' user@target.example.com
 
   go-webssh-cli --url https://webssh.example.com --list
   go-webssh-cli --url https://webssh.example.com --saved prod
@@ -42,23 +45,24 @@ Examples:
 	}
 
 	var (
-		serverURL    string
-		webUser      string
-		webPassword  string
-		proxyURL     string
-		noProxy      bool
-		insecure     bool
-		identity     string
-		passphrase   string
-		saved        string
-		listSaved    bool
-		port         int
-		login        string
-		term         string
-		useTmux      bool
-		tmuxSession  string
-		timeout      time.Duration
-		showVersion  bool
+		serverURL   string
+		webUser     string
+		webPassword string
+		proxyURL    string
+		noProxy     bool
+		insecure    bool
+		identity    string
+		passphrase  string
+		saved       string
+		listSaved   bool
+		port        int
+		login       string
+		term        string
+		useTmux     bool
+		tmuxSession string
+		timeout     time.Duration
+		showVersion bool
+		stdioTunnel bool
 	)
 
 	fs.StringVar(&serverURL, "url", os.Getenv("GOWEBSSH_URL"), "WebSSH base URL (or GOWEBSSH_URL)")
@@ -82,6 +86,7 @@ Examples:
 	fs.StringVar(&tmuxSession, "herdr-session", "", "Herdr session name")
 	fs.StringVar(&tmuxSession, "tmux-session", "", "alias for --herdr-session")
 	fs.DurationVar(&timeout, "timeout", 45*time.Second, "HTTP and SSH connect timeout")
+	fs.BoolVar(&stdioTunnel, "stdio", false, "relay raw target TCP over stdin/stdout for OpenSSH ProxyCommand")
 	fs.BoolVar(&showVersion, "version", false, "print version and exit")
 	fs.BoolVar(&showVersion, "v", false, "print version and exit")
 
@@ -119,6 +124,30 @@ Examples:
 
 	args := fs.Args()
 	switch {
+	case stdioTunnel && (listSaved || saved != ""):
+		fmt.Fprintln(os.Stderr, "go-webssh-cli: --stdio cannot be combined with --list or --saved")
+		os.Exit(2)
+	case stdioTunnel && len(args) == 2:
+		opt.Host = strings.TrimSpace(args[0])
+		parsedPort, err := strconv.Atoi(args[1])
+		if err != nil || parsedPort < 1 || parsedPort > 65535 {
+			fmt.Fprintln(os.Stderr, "go-webssh-cli: tunnel port must be between 1 and 65535")
+			os.Exit(2)
+		}
+		opt.Port = parsedPort
+	case stdioTunnel && len(args) == 1:
+		_, host, destPort, err := cli.ParseDestination(args[0])
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "go-webssh-cli: %v\n", err)
+			os.Exit(2)
+		}
+		opt.Host = host
+		if destPort != 0 {
+			opt.Port = destPort
+		}
+	case stdioTunnel:
+		fs.Usage()
+		os.Exit(2)
 	case listSaved:
 		if len(args) > 0 {
 			fmt.Fprintln(os.Stderr, "go-webssh-cli: --list does not take a destination")
@@ -147,7 +176,12 @@ Examples:
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	err := cli.Run(ctx, opt, cli.DefaultStdio())
+	var err error
+	if stdioTunnel {
+		err = cli.RunTunnel(ctx, opt, cli.DefaultStdio())
+	} else {
+		err = cli.Run(ctx, opt, cli.DefaultStdio())
+	}
 	if err == nil {
 		return
 	}

@@ -22,6 +22,16 @@ type ConnectData struct {
 	TmuxSession   string `json:"tmuxSession,omitempty"`
 }
 
+type TunnelConnectData struct {
+	Host string `json:"host"`
+	Port int    `json:"port"`
+}
+
+type TunnelConnectedData struct {
+	Host string `json:"host"`
+	Port int    `json:"port"`
+}
+
 type ConnectedData struct {
 	SessionID    string `json:"sessionId"`
 	Host         string `json:"host"`

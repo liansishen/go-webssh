@@ -21,7 +21,7 @@ import (
 	"github.com/liansishen/go-webssh/web"
 )
 
-var version = "0.5.20"
+var version = "0.5.21"
 
 func main() {
 	var (
@@ -82,6 +82,9 @@ func main() {
 	}
 	if cfg.SSH.HostKeyPolicy == "insecure-ignore" {
 		logger.Warn("SECURITY WARNING: ssh.host_key_policy=insecure-ignore disables host key verification")
+	}
+	if cfg.Tunnel.Enabled {
+		logger.Warn("TCP-over-WebSocket tunnel enabled", "allowed_ports", cfg.Tunnel.AllowedPorts, "max_connections", cfg.Tunnel.MaxConnections)
 	}
 
 	store := auth.NewStore(cfg.Auth.SessionTTL)

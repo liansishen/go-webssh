@@ -16,6 +16,7 @@ type Config struct {
 	Server        ServerConfig        `yaml:"server"`
 	Auth          AuthConfig          `yaml:"auth"`
 	SSH           SSHConfig           `yaml:"ssh"`
+	Tunnel        TunnelConfig        `yaml:"tunnel"`
 	NetworkPolicy NetworkPolicyConfig `yaml:"network_policy"`
 	Logging       LoggingConfig       `yaml:"logging"`
 	Credentials   CredentialsConfig   `yaml:"credentials"`
@@ -42,6 +43,15 @@ type SSHConfig struct {
 	MaxSessions    int           `yaml:"max_sessions"`
 	HostKeyPolicy  string        `yaml:"host_key_policy"`
 	KnownHostsFile string        `yaml:"known_hosts_file"`
+}
+
+type TunnelConfig struct {
+	Enabled        bool          `yaml:"enabled"`
+	ConnectTimeout time.Duration `yaml:"connect_timeout"`
+	WriteTimeout   time.Duration `yaml:"write_timeout"`
+	IdleTimeout    time.Duration `yaml:"idle_timeout"`
+	MaxConnections int           `yaml:"max_connections"`
+	AllowedPorts   []int         `yaml:"allowed_ports"`
 }
 
 type NetworkPolicyConfig struct {
@@ -114,6 +124,14 @@ type rawConfig struct {
 		HostKeyPolicy  string   `yaml:"host_key_policy"`
 		KnownHostsFile string   `yaml:"known_hosts_file"`
 	} `yaml:"ssh"`
+	Tunnel struct {
+		Enabled        bool     `yaml:"enabled"`
+		ConnectTimeout duration `yaml:"connect_timeout"`
+		WriteTimeout   duration `yaml:"write_timeout"`
+		IdleTimeout    duration `yaml:"idle_timeout"`
+		MaxConnections int      `yaml:"max_connections"`
+		AllowedPorts   []int    `yaml:"allowed_ports"`
+	} `yaml:"tunnel"`
 	NetworkPolicy NetworkPolicyConfig `yaml:"network_policy"`
 	Logging       LoggingConfig       `yaml:"logging"`
 	Credentials   struct {
@@ -146,6 +164,14 @@ func Default() *Config {
 			MaxSessions:    5,
 			HostKeyPolicy:  "known-hosts",
 			KnownHostsFile: "./known_hosts",
+		},
+		Tunnel: TunnelConfig{
+			Enabled:        false,
+			ConnectTimeout: 15 * time.Second,
+			WriteTimeout:   30 * time.Second,
+			IdleTimeout:    30 * time.Minute,
+			MaxConnections: 5,
+			AllowedPorts:   []int{22},
 		},
 		NetworkPolicy: NetworkPolicyConfig{
 			AllowPrivateRanges: false,
@@ -223,6 +249,23 @@ func applyRaw(cfg *Config, raw *rawConfig) {
 		cfg.SSH.KnownHostsFile = raw.SSH.KnownHostsFile
 	}
 
+	cfg.Tunnel.Enabled = raw.Tunnel.Enabled
+	if raw.Tunnel.ConnectTimeout.Duration > 0 {
+		cfg.Tunnel.ConnectTimeout = raw.Tunnel.ConnectTimeout.Duration
+	}
+	if raw.Tunnel.WriteTimeout.Duration > 0 {
+		cfg.Tunnel.WriteTimeout = raw.Tunnel.WriteTimeout.Duration
+	}
+	if raw.Tunnel.IdleTimeout.Duration > 0 {
+		cfg.Tunnel.IdleTimeout = raw.Tunnel.IdleTimeout.Duration
+	}
+	if raw.Tunnel.MaxConnections > 0 {
+		cfg.Tunnel.MaxConnections = raw.Tunnel.MaxConnections
+	}
+	if raw.Tunnel.AllowedPorts != nil {
+		cfg.Tunnel.AllowedPorts = append([]int(nil), raw.Tunnel.AllowedPorts...)
+	}
+
 	// Network policy: only override when explicitly set in YAML.
 	// YAML zero value for bool is false; we merge deny/allow if provided.
 	if raw.NetworkPolicy.Deny != nil || raw.NetworkPolicy.Allow != nil || raw.NetworkPolicy.AllowPrivateRanges {
@@ -277,6 +320,9 @@ func ApplyEnv(cfg *Config) {
 	}
 	if v := os.Getenv("GOWEBSSH_KNOWN_HOSTS_FILE"); v != "" {
 		cfg.SSH.KnownHostsFile = v
+	}
+	if v := os.Getenv("GOWEBSSH_TUNNEL_ENABLED"); v != "" {
+		cfg.Tunnel.Enabled = strings.EqualFold(v, "true") || v == "1"
 	}
 	if v := os.Getenv("GOWEBSSH_ALLOW_PRIVATE_RANGES"); v != "" {
 		cfg.NetworkPolicy.AllowPrivateRanges = strings.EqualFold(v, "true") || v == "1"
@@ -337,6 +383,31 @@ func (c *Config) Validate() error {
 	}
 	if c.SSH.IdleTimeout <= 0 {
 		c.SSH.IdleTimeout = 30 * time.Minute
+	}
+	if c.Tunnel.ConnectTimeout <= 0 {
+		c.Tunnel.ConnectTimeout = 15 * time.Second
+	}
+	if c.Tunnel.WriteTimeout <= 0 {
+		c.Tunnel.WriteTimeout = 30 * time.Second
+	}
+	if c.Tunnel.IdleTimeout <= 0 {
+		c.Tunnel.IdleTimeout = 30 * time.Minute
+	}
+	if c.Tunnel.MaxConnections <= 0 {
+		c.Tunnel.MaxConnections = 5
+	}
+	if len(c.Tunnel.AllowedPorts) == 0 {
+		return errors.New("tunnel.allowed_ports must contain at least one port")
+	}
+	seenPorts := make(map[int]struct{}, len(c.Tunnel.AllowedPorts))
+	for _, port := range c.Tunnel.AllowedPorts {
+		if port < 1 || port > 65535 {
+			return fmt.Errorf("tunnel.allowed_ports contains invalid port %d", port)
+		}
+		if _, exists := seenPorts[port]; exists {
+			return fmt.Errorf("tunnel.allowed_ports contains duplicate port %d", port)
+		}
+		seenPorts[port] = struct{}{}
 	}
 	if c.Credentials.Enabled {
 		if strings.TrimSpace(c.Credentials.DBFile) == "" {
