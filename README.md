@@ -60,7 +60,7 @@ curl -fsSL https://raw.githubusercontent.com/liansishen/go-webssh/main/install.s
 可选环境变量：
 
 ```bash
-GOWEBSSH_VERSION=v0.5.21 \
+GOWEBSSH_VERSION=v0.5.22 \
 GOWEBSSH_LISTEN=127.0.0.1:8080 \
 GOWEBSSH_USERNAME=admin \
 GOWEBSSH_ALLOW_PRIVATE_RANGES=false \
@@ -157,6 +157,60 @@ Host target-via-webssh
     ServerAliveInterval 20
 ```
 
+也可以通过环境变量配置隧道模式和目标地址，让 `ProxyCommand` 只包含程序路径。Windows PowerShell 示例（假设客户端已命名为 `gwc.exe`）：
+
+```powershell
+$env:GOWEBSSH_STDIO = "true"
+$env:GOWEBSSH_TARGET_HOST = "992319.xyz"
+$env:GOWEBSSH_TARGET_PORT = "8822"
+```
+
+保留前面配置的 `GOWEBSSH_URL`、`GOWEBSSH_USERNAME` 和 `GOWEBSSH_PASSWORD`，在同一个 PowerShell 窗口中执行 SSH，让代理进程继承环境变量：
+
+```sshconfig
+Host HomeServer
+    HostName 992319.xyz
+    Port 8822
+    User root
+    IdentityFile ~/.ssh/id_ed25519
+    ProxyCommand D:/gowebssh/gwc.exe
+    ServerAliveInterval 20
+    ServerAliveCountMax 3
+```
+
+```powershell
+ssh -N -D 127.0.0.1:1080 HomeServer
+```
+
+| 客户端环境变量 | 作用 | 默认值 |
+|---|---|---|
+| `GOWEBSSH_STDIO` | 启用原始 stdin/stdout 隧道模式，使用 `true` / `false` | `false` |
+| `GOWEBSSH_TARGET_HOST` | 隧道连接的目标 SSH 主机，单独填写主机名或 IP | 必须通过参数或此变量提供 |
+| `GOWEBSSH_TARGET_PORT` | 隧道连接的目标 SSH 端口，范围为 1–65535 | `22` |
+
+显式 `--stdio` / `--stdio=false` 覆盖 `GOWEBSSH_STDIO`；目标参数覆盖 `GOWEBSSH_TARGET_HOST`。端口优先级为目标参数中的端口、`-p` / `--port`、`GOWEBSSH_TARGET_PORT`、默认 `22`。目标环境变量仅在隧道模式下使用；需要默认交互模式时，可显式传入 `--stdio=false`。
+
+仅包含程序路径时，目标地址来自环境变量。请让它与 SSH 配置中的 `HostName`、`Port` 保持一致。连接多个目标时，可保留 `ProxyCommand D:/gowebssh/gwc.exe %h %p`，同时用 `GOWEBSSH_STDIO=true` 启用隧道模式，让 OpenSSH 为每个连接传入正确的目标地址。
+
+### DoH、IP 连接与省略 SNI
+
+客户端可启用 `--private-connect` 或 `GOWEBSSH_PRIVATE_CONNECT=true`：
+
+```powershell
+$env:GOWEBSSH_PRIVATE_CONNECT = "true"
+$env:GOWEBSSH_URL = "https://992319.xyz:8443"
+```
+
+该选项适用于交互终端、保存的凭据、凭据列表和 `--stdio` 隧道。显式 `--private-connect=false` 可覆盖环境变量；默认关闭，以兼容依赖 SNI 路由的部署。
+
+启用后，客户端先使用腾讯 DNSPod（`https://doh.pub/dns-query`）查询服务端地址，失败或没有可用地址时使用阿里公共 DNS（`https://dns.alidns.com/resolve`）。优先使用 IPv4，无 IPv4 时查询 IPv6；当前会话固定使用返回的第一个地址，新进程重新查询以跟随 DDNS 更新。服务商地址及代理地址的首次连接可能使用系统 DNS；目标 WebSSH 域名始终通过 DoH 查询。
+
+登录、凭据接口和 WebSocket 都通过 IP 建立连接，HTTP/HTTPS 代理的 CONNECT 目标同样使用 IP。WebSSH 的 TLS 握手省略 SNI，要求 TLS 1.3，并继续按原域名检查证书信任链、域名及有效期。HTTP `Host`、WebSocket `Origin` 和登录 Cookie 保留原站点语义，位于 TLS 加密内容中。
+
+服务端需要支持没有 SNI 的 TLS 1.3 连接，代理需要允许 CONNECT 到 IP 地址。请直接配置最终 HTTPS/WSS 地址；该模式禁用 HTTP 重定向，且不能与 `--insecure` 组合。DoH、代理或 TLS 校验失败时连接终止，不会回退到普通 DNS、域名 CONNECT 或带目标域名 SNI 的连接。
+
+该模式减少域名在普通网络监控中的直接暴露。DNS 服务商可读取查询，服务器 IP 和流量特征仍可见；具有 TLS 解密能力或端点高权限的监控可能获取域名。隧道消息中的 SSH 目标地址仍由 `GOWEBSSH_TARGET_HOST` / 目标参数指定，在加密连接中传输，并由 WebSSH 服务端解析。
+
 之后可以使用标准 OpenSSH 功能：
 
 ```bash
@@ -187,6 +241,7 @@ go-webssh-cli --saved prod
 | `--web-password` / `GOWEBSSH_PASSWORD` | Web 登录密码；建议用环境变量而不是命令行 |
 | `--proxy` / `GOWEBSSH_PROXY` | HTTP 代理 URL；默认使用 `HTTP_PROXY`/`HTTPS_PROXY` |
 | `--no-proxy` | 不走代理 |
+| `--private-connect` / `GOWEBSSH_PRIVATE_CONNECT` | 腾讯/阿里 DoH、IP CONNECT、无 SNI 的 TLS 1.3，保持严格证书校验 |
 | `--insecure` | 跳过 WebSSH 服务端的 TLS 证书校验 |
 | `-i` | 本机 SSH 私钥 |
 | `--saved` | 用已保存凭据的 id 或名称 |
