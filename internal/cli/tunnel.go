@@ -55,6 +55,7 @@ func RunTunnel(ctx context.Context, opt Options, stdio Stdio) error {
 	if err != nil {
 		return err
 	}
+	defer client.closeIdleConnections()
 	if err := client.login(ctx); err != nil {
 		return err
 	}

@@ -40,24 +40,25 @@ const (
 
 // Options configure a CLI session.
 type Options struct {
-	ServerURL    string
-	WebUser      string
-	WebPassword  string
-	ProxyURL     string
-	NoProxy      bool
-	InsecureTLS  bool
-	IdentityFile string
-	Passphrase   string
-	Saved        string
-	ListSaved    bool
-	Host         string
-	Port         int
-	SSHUser      string
-	Term         string
-	UseTmux      bool
-	TmuxSession  string
-	Timeout      time.Duration
-	UserAgent    string
+	ServerURL      string
+	WebUser        string
+	WebPassword    string
+	ProxyURL       string
+	NoProxy        bool
+	InsecureTLS    bool
+	PrivateConnect bool
+	IdentityFile   string
+	Passphrase     string
+	Saved          string
+	ListSaved      bool
+	Host           string
+	Port           int
+	SSHUser        string
+	Term           string
+	UseTmux        bool
+	TmuxSession    string
+	Timeout        time.Duration
+	UserAgent      string
 }
 
 // Stdio is the local terminal and log streams.
@@ -129,12 +130,13 @@ type savedCredential struct {
 }
 
 type client struct {
-	opt    Options
-	stdio  Stdio
-	base   *url.URL
-	http   *http.Client
-	dialer *websocket.Dialer
-	origin string
+	opt     Options
+	stdio   Stdio
+	base    *url.URL
+	http    *http.Client
+	dialer  *websocket.Dialer
+	origin  string
+	private *privateConnection
 }
 
 // Run logs in to the WebSSH server and either lists saved credentials or
@@ -166,6 +168,7 @@ func Run(ctx context.Context, opt Options, stdio Stdio) error {
 	if err != nil {
 		return err
 	}
+	defer c.closeIdleConnections()
 
 	if strings.TrimSpace(opt.WebPassword) == "" {
 		pw, err := promptSecret(stdio, "Web password: ")
@@ -320,9 +323,24 @@ func newClient(opt Options, stdio Stdio) (*client, error) {
 		return nil, fmt.Errorf("invalid WebSSH URL %q", opt.ServerURL)
 	}
 	switch base.Scheme {
-	case "http", "https", "ws", "wss":
+	case "http", "https":
+	case "ws":
+		base.Scheme = "http"
+	case "wss":
+		base.Scheme = "https"
 	default:
 		return nil, fmt.Errorf("unsupported WebSSH URL scheme %q", base.Scheme)
+	}
+	if opt.PrivateConnect {
+		if base.Scheme != "https" {
+			return nil, errors.New("private connection mode requires an HTTPS/WSS URL")
+		}
+		if opt.InsecureTLS {
+			return nil, errors.New("private connection mode requires certificate verification; remove --insecure")
+		}
+		if base.User != nil {
+			return nil, errors.New("private connection URL must not contain user information")
+		}
 	}
 	proxyFn, err := proxyFunc(opt)
 	if err != nil {
@@ -342,7 +360,7 @@ func newClient(opt Options, stdio Stdio) (*client, error) {
 		TLSHandshakeTimeout: opt.Timeout,
 		ForceAttemptHTTP2:   false,
 	}
-	return &client{
+	c := &client{
 		opt:    opt,
 		stdio:  stdio,
 		base:   base,
@@ -357,7 +375,11 @@ func newClient(opt Options, stdio Stdio) (*client, error) {
 			TLSClientConfig:  tlsCfg,
 			HandshakeTimeout: opt.Timeout,
 		},
-	}, nil
+	}
+	if opt.PrivateConnect {
+		c.private = &privateConnection{resolver: newPrivateResolver(proxyFn, opt.Timeout)}
+	}
+	return c, nil
 }
 
 func proxyFunc(opt Options) (func(*http.Request) (*url.URL, error), error) {
@@ -429,6 +451,9 @@ func (c *client) websocketURL(path string) string {
 }
 
 func (c *client) login(ctx context.Context) error {
+	if err := c.preparePrivateConnection(ctx); err != nil {
+		return err
+	}
 	body, err := json.Marshal(map[string]string{
 		"username": c.opt.WebUser,
 		"password": c.opt.WebPassword,
@@ -539,6 +564,14 @@ func (c *client) dialWSURL(ctx context.Context, endpoint string) (*websocket.Con
 	header.Set("Origin", c.origin)
 	header.Set("User-Agent", c.opt.UserAgent)
 	c.attachCookies(header)
+	if c.private != nil {
+		var err error
+		endpoint, err = c.privateWebSocketURL(endpoint)
+		if err != nil {
+			return nil, err
+		}
+		header.Set("Host", c.base.Host)
+	}
 	conn, resp, err := c.dialer.DialContext(ctx, endpoint, header)
 	if err != nil {
 		if resp != nil {
