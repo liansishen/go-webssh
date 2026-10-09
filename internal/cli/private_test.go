@@ -86,7 +86,7 @@ func privateTestClient(t *testing.T, server *httptest.Server, hostname, prefix, 
 }
 
 func TestPrivateConnectionHTTPAndWebSockets(t *testing.T) {
-	for _, mode := range []string{"direct", "HTTP proxy", "HTTPS proxy"} {
+	for _, mode := range []string{"direct", "HTTP proxy", "HTTPS proxy", "HTTP proxy with auth", "HTTPS proxy with auth"} {
 		useProxy := mode != "direct"
 		t.Run(mode, func(t *testing.T) {
 			const hostname = "webssh.example.test"
@@ -140,6 +140,10 @@ func TestPrivateConnectionHTTPAndWebSockets(t *testing.T) {
 			connectTargets := make(chan string, 16)
 			if useProxy {
 				proxy := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					if strings.HasSuffix(mode, "with auth") && r.Header.Get("Proxy-Authorization") != "Basic cHJveHktdXNlcjpwcm94eS1wYXNzd29yZA==" {
+						http.Error(w, "proxy authentication required", http.StatusProxyAuthRequired)
+						return
+					}
 					if r.Method != http.MethodConnect {
 						http.Error(w, "CONNECT required", 405)
 						return
@@ -166,7 +170,7 @@ func TestPrivateConnectionHTTPAndWebSockets(t *testing.T) {
 					_ = downstream.Close()
 					<-done
 				}))
-				if mode == "HTTPS proxy" {
+				if strings.HasPrefix(mode, "HTTPS proxy") {
 					proxyCertificate, _ := privateTestCertificate(t, "127.0.0.1", false)
 					proxy.TLS = &tls.Config{Certificates: []tls.Certificate{proxyCertificate}}
 					roots.AddCert(proxyRootsCertificate(t, proxyCertificate))
@@ -176,6 +180,11 @@ func TestPrivateConnectionHTTPAndWebSockets(t *testing.T) {
 				}
 				t.Cleanup(proxy.Close)
 				proxyURL = proxy.URL
+				if strings.HasSuffix(mode, "with auth") {
+					u, _ := url.Parse(proxyURL)
+					u.User = url.UserPassword("proxy-user", "proxy-password")
+					proxyURL = u.String()
+				}
 			}
 			c := privateTestClient(t, server, hostname, "/prefix", proxyURL, roots)
 			if err := c.login(context.Background()); err != nil {

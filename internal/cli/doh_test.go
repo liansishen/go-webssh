@@ -415,3 +415,22 @@ func TestDoHMissingStatus(t *testing.T) {
 		t.Fatalf("error=%v", err)
 	}
 }
+
+func TestDoHTimeoutReservesFallbackBudget(t *testing.T) {
+	primary := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		<-r.Context().Done()
+	}))
+	defer primary.Close()
+	fallback := newDoHServer(t, func(name, qtype string) (int, int, []dohAnswer) {
+		return http.StatusOK, 0, []dohAnswer{{Type: dohTypeA, Data: "192.0.2.10"}}
+	})
+	client := dohTestClient()
+	defer client.CloseIdleConnections()
+	resolver := &dohResolver{client: client, endpoints: []string{primary.URL, fallback.URL}}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	addresses, err := resolver.lookup(ctx, "example.test")
+	if err != nil || len(addresses) != 1 || addresses[0].String() != "192.0.2.10" {
+		t.Fatalf("addresses=%v error=%v", addresses, err)
+	}
+}

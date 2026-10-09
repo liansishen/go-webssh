@@ -75,8 +75,16 @@ func (r *dohResolver) lookup(ctx context.Context, host string) ([]net.IP, error)
 	defer cancel()
 
 	var errs []error
-	for _, endpoint := range r.endpoints {
-		ips, err := r.lookupEndpoint(ctx, endpoint, host)
+	for index, endpoint := range r.endpoints {
+		deadline, _ := ctx.Deadline()
+		budget := time.Until(deadline) / time.Duration(len(r.endpoints)-index)
+		if budget > 2*dohQueryTimeout {
+			budget = 2 * dohQueryTimeout
+		}
+		// Reserve time for the remaining provider when the primary stalls.
+		endpointContext, cancelEndpoint := context.WithTimeout(ctx, budget)
+		ips, err := r.lookupEndpoint(endpointContext, endpoint, host)
+		cancelEndpoint()
 		if err != nil {
 			errs = append(errs, err)
 			if ctx.Err() != nil {
@@ -232,7 +240,7 @@ func withDoHTimeout(ctx context.Context) (context.Context, context.CancelFunc) {
 	if _, ok := ctx.Deadline(); ok {
 		return ctx, func() {}
 	}
-	return context.WithTimeout(ctx, dohQueryTimeout)
+	return context.WithTimeout(ctx, 4*dohQueryTimeout)
 }
 
 func endpointHost(endpoint string) string {

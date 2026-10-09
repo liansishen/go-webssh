@@ -55,7 +55,6 @@ func (c *client) preparePrivateConnection(ctx context.Context) error {
 	c.http.CheckRedirect = func(*http.Request, []*http.Request) error {
 		return errors.New("HTTP redirects are disabled in private connection mode; configure the final WebSSH URL")
 	}
-	c.dialer.TLSClientConfig = tlsCfg
 	c.dialer.Proxy = nil
 	c.dialer.NetDialTLSContext = dial
 	c.private.address = address
